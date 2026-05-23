@@ -1,1 +1,33 @@
 @import "tailwindcss";
+
+/* ── Gallery tile CSS-generated geometric pattern animations ── */
+
+@keyframes gallerySpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes galleryFloat {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-12px) scale(1.08); }
+}
+
+@keyframes galleryPulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.96); }
+  50%      { opacity: 0.75; transform: scale(1.04); }
+}
+
+/* Subtle hover lift on gallery tiles */
+.gallery-tile-1,
+.gallery-tile-2,
+.gallery-tile-3,
+.gallery-tile-4 {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.gallery-tile-1:hover,
+.gallery-tile-2:hover,
+.gallery-tile-3:hover,
+.gallery-tile-4:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.18);
+}

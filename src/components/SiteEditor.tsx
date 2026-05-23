@@ -211,9 +211,9 @@ export default function SiteEditor({ open, site, onClose, onPublish }: SiteEdito
   };
 
   const heroStyle: React.CSSProperties = {
-    background: template.heroBg,
-    color: template.heroText,
+    backgroundImage: template.heroBg,
     backgroundSize: 'cover',
+    color: template.heroText,
   };
 
   const cardStyle: React.CSSProperties = {
@@ -397,24 +397,117 @@ export default function SiteEditor({ open, site, onClose, onPublish }: SiteEdito
             style={{ fontWeight: template.headingWeight, marginBottom: 40, ...accentStyle }}
           />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-            {[1, 2, 3, 4].map((i) => (
+            {/* Pattern 1: Concentric radiating circles */}
+            <div
+              className="gallery-tile-1"
+              style={{
+                ...cardStyle,
+                aspectRatio: '4/3',
+                position: 'relative',
+                overflow: 'hidden',
+                background: `radial-gradient(circle at 30% 40%, ${template.accent}22 0%, transparent 25%),
+                             radial-gradient(circle at 60% 70%, ${template.accent}18 0%, transparent 30%),
+                             radial-gradient(circle at 80% 20%, ${template.accent}25 0%, transparent 20%),
+                             repeating-radial-gradient(circle at 50% 50%, ${template.accent}08 0px, ${template.accent}04 4px, transparent 8px)`,
+              }}
+            >
+              <div style={{
+                position: 'absolute', inset: 0,
+                background: `conic-gradient(from 0deg at 50% 50%, transparent 0deg, ${template.accent}10 90deg, transparent 180deg, ${template.accent}06 270deg, transparent 360deg)`,
+                animation: 'gallerySpin 20s linear infinite',
+              }} />
+            </div>
+            {/* Pattern 2: Diagonal stripes & diamond mesh */}
+            <div
+              className="gallery-tile-2"
+              style={{
+                ...cardStyle,
+                aspectRatio: '4/3',
+                position: 'relative',
+                overflow: 'hidden',
+                background: `repeating-linear-gradient(45deg, ${template.accent}0a 0px, ${template.accent}0a 2px, transparent 2px, transparent 12px),
+                             repeating-linear-gradient(-45deg, ${template.accent}08 0px, ${template.accent}08 2px, transparent 2px, transparent 12px),
+                             linear-gradient(135deg, ${template.accent}15 0%, transparent 50%, ${template.accent}08 100%)`,
+              }}
+            >
+              <div style={{
+                position: 'absolute', inset: 0,
+                background: `radial-gradient(ellipse at 70% 30%, ${template.accent}12 0%, transparent 60%)`,
+              }} />
+            </div>
+            {/* Pattern 3: Floating geometric orbs */}
+            <div
+              className="gallery-tile-3"
+              style={{
+                ...cardStyle,
+                aspectRatio: '4/3',
+                position: 'relative',
+                overflow: 'hidden',
+                background: `linear-gradient(160deg, ${template.accent}08 0%, transparent 30%, ${template.accent}0c 70%, ${template.accent}04 100%)`,
+              }}
+            >
+              {[
+                { size: 60, x: '15%', y: '25%', delay: '0s', dur: '8s', opacity: 0.2 },
+                { size: 40, x: '75%', y: '20%', delay: '2s', dur: '10s', opacity: 0.15 },
+                { size: 80, x: '50%', y: '55%', delay: '4s', dur: '12s', opacity: 0.12 },
+                { size: 30, x: '85%', y: '65%', delay: '1s', dur: '7s', opacity: 0.18 },
+                { size: 50, x: '25%', y: '70%', delay: '3s', dur: '9s', opacity: 0.14 },
+              ].map((orb, idx) => (
                 <div
-                  key={i}
+                  key={idx}
                   style={{
-                    ...cardStyle,
-                    aspectRatio: '4/3',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 12,
-                    opacity: 0.5,
-                    color: template.accent,
-                    overflow: 'hidden',
+                    position: 'absolute',
+                    left: orb.x,
+                    top: orb.y,
+                    width: orb.size,
+                    height: orb.size,
+                    borderRadius: '50%',
+                    background: `radial-gradient(circle at 35% 35%, ${template.accent}, ${template.accent}00)`,
+                    opacity: orb.opacity,
+                    animation: `galleryFloat ${orb.dur} ease-in-out ${orb.delay} infinite`,
+                    filter: 'blur(8px)',
                   }}
-                >
-                  <Image size={24} />
-                </div>
+                />
               ))}
+            </div>
+            {/* Pattern 4: Isometric grid & tessellation */}
+            <div
+              className="gallery-tile-4"
+              style={{
+                ...cardStyle,
+                aspectRatio: '4/3',
+                position: 'relative',
+                overflow: 'hidden',
+                background: `linear-gradient(30deg, ${template.accent}06 1px, transparent 1px) 0 0 / 20px 20px,
+                             linear-gradient(-30deg, ${template.accent}06 1px, transparent 1px) 0 0 / 20px 20px,
+                             linear-gradient(180deg, ${template.accent}04 0%, transparent 40%, ${template.accent}0a 100%)`,
+              }}
+            >
+              <div style={{
+                position: 'absolute',
+                inset: '15% 20%',
+                border: `2px solid ${template.accent}15`,
+                borderRadius: '12px',
+                background: `linear-gradient(135deg, ${template.accent}10 0%, transparent 100%)`,
+                animation: 'galleryPulse 4s ease-in-out infinite',
+              }} />
+              <div style={{
+                position: 'absolute',
+                inset: '35% 45% 25% 25%',
+                border: `2px solid ${template.accent}12`,
+                borderRadius: '10px',
+                background: `linear-gradient(225deg, ${template.accent}08 0%, transparent 100%)`,
+                animation: 'galleryPulse 4s ease-in-out 1.5s infinite',
+              }} />
+              <div style={{
+                position: 'absolute',
+                inset: '50% 30% 15% 40%',
+                border: `2px solid ${template.accent}10`,
+                borderRadius: '8px',
+                background: `linear-gradient(45deg, ${template.accent}06 0%, transparent 100%)`,
+                animation: 'galleryPulse 4s ease-in-out 3s infinite',
+              }} />
+            </div>
           </div>
         </section>
       )}
