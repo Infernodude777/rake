@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, MapPin, Zap, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { findBusinesses, searchPlaces, rateLimiter as googleLimiter } from '../services/google';
@@ -21,6 +21,18 @@ const SERVICE_META = [
   { id: 'google', name: 'Google Maps', icon: MapPin },
   { id: 'llm', name: 'AI Enrichment', icon: Zap },
 ] as const;
+
+function formatTimeAgo(timestamp: number): string {
+  const diff = Date.now() - timestamp;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(timestamp).toLocaleDateString();
+}
 
 function escapeCSV(val: string | number): string {
   const s = String(val);
@@ -45,11 +57,13 @@ interface DiscoverProps {
 }
 
 export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps) {
-  const { apiKeys, addBusinesses, businesses, addLead, addWebsite, addNotification, settings } = useData();
+  const { apiKeys, addBusinesses, businesses, addLead, addWebsite, addNotification, settings, searchHistory, addSearchHistory, clearSearchHistory } = useData();
   const [query, setQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
   const [serviceStatuses, setServiceStatuses] = useState<ServiceStatus[]>(createServiceStatuses);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   const updateStatus = useCallback((id: string, updates: Partial<ServiceStatus>) => {
     setServiceStatuses((prev) =>
@@ -256,6 +270,7 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
       }
 
       addBusinesses(results);
+      addSearchHistory({ query: query.trim(), resultCount: results.length });
       addNotification(`Search complete: ${results.length} businesses enriched`);
     } catch (e: any) {
       setSearchError(e.message || 'Search failed');
@@ -361,12 +376,65 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
       <div className="mt-8 flex gap-3">
         <div className="flex-1 relative">
           <input
+            ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && runSearch()}
             placeholder="dentists in Miami • plumbers in Chicago • gyms in Austin"
             className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl py-4 px-5 text-lg placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors"
+            onFocus={() => setShowHistory(searchHistory.length > 0)}
+            onBlur={() => setTimeout(() => setShowHistory(false), 200)}
           />
+
+          {/* Search history dropdown */}
+          {showHistory && searchHistory.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-xl z-50">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800">
+                <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">Recent searches</span>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    clearSearchHistory();
+                    setShowHistory(false);
+                  }}
+                  className="text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors"
+                >
+                  Clear history
+                </button>
+              </div>
+              <div className="max-h-64 overflow-y-auto">
+                {searchHistory.map((entry, i) => (
+                  <button
+                    key={`${entry.query}-${i}`}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-zinc-800/50 transition-colors group"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setQuery(entry.query);
+                      setShowHistory(false);
+                      setTimeout(() => inputRef.current?.focus(), 0);
+                    }}
+                    onDoubleClick={() => {
+                      setQuery(entry.query);
+                      setShowHistory(false);
+                      // Trigger search immediately
+                      setTimeout(() => runSearch(), 0);
+                    }}
+                  >
+                    <Clock size={14} className="text-zinc-600 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-zinc-300 truncate">{entry.query}</div>
+                      <div className="text-[10px] text-zinc-600">
+                        {entry.resultCount} results · {formatTimeAgo(entry.timestamp)}
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                      Double-click to re-run
+                    </span>
+                  </button>
+                )            )}
+              </div>
+            </div>
+          )}
         </div>
         <button
           onClick={runSearch}

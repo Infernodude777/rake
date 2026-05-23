@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useCallback, useState, type ReactNode } from 'react';
-import type { Business, Lead, Website, Notification, ApiKeys, LeadStage, AppSettings } from '../types';
+import type { Business, Lead, Website, Notification, ApiKeys, LeadStage, AppSettings, SearchHistoryEntry } from '../types';
 import { LEAD_STAGES, DEFAULT_API_KEYS, DEFAULT_RATE_LIMITS } from '../types';
 import { getData, setData, clearAllUserData } from '../services/storage';
 
@@ -16,6 +16,7 @@ const STORAGE_KEYS = {
   notifications: 'notifications',
   apiKeys: 'apiKeys',
   settings: 'settings',
+  searchHistory: 'searchHistory',
 } as const;
 
 // ---- Context Type ----
@@ -28,6 +29,7 @@ interface DataContextType {
   notifications: Notification[];
   apiKeys: ApiKeys;
   settings: AppSettings;
+  searchHistory: SearchHistoryEntry[];
 
   setUserId: (id: string | null) => void;
   setBusinesses: (businesses: Business[]) => void;
@@ -44,6 +46,8 @@ interface DataContextType {
   setApiKeys: (keys: ApiKeys) => void;
   setSettings: (settings: Partial<AppSettings>) => void;
   clearData: () => void;
+  addSearchHistory: (entry: { query: string; resultCount: number }) => void;
+  clearSearchHistory: () => void;
 }
 
 const DataContext = createContext<DataContextType | null>(null);
@@ -57,6 +61,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [websites, setWebsitesState] = useState<Website[]>([]);
   const [notifications, setNotificationsState] = useState<Notification[]>(DEFAULT_NOTIFICATIONS);
   const [apiKeys, setApiKeysState] = useState<ApiKeys>(DEFAULT_API_KEYS);
+  const [searchHistory, setSearchHistoryState] = useState<SearchHistoryEntry[]>([]);
   const [settings, setSettingsState] = useState<AppSettings>({ workspaceName: 'My Workspace', userName: 'User', rateLimits: { ...DEFAULT_RATE_LIMITS } });
 
   // Load data from localStorage when userId changes
@@ -67,6 +72,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setNotificationsState(getData<Notification[]>(uid, STORAGE_KEYS.notifications, DEFAULT_NOTIFICATIONS));
     setApiKeysState(getData<ApiKeys>(uid, STORAGE_KEYS.apiKeys, DEFAULT_API_KEYS));
     setSettingsState(getData<AppSettings>(uid, STORAGE_KEYS.settings, { workspaceName: 'My Workspace', userName: 'User', rateLimits: { ...DEFAULT_RATE_LIMITS } }));
+    setSearchHistoryState(getData<SearchHistoryEntry[]>(uid, STORAGE_KEYS.searchHistory, []));
   }, []);
 
   const setUserId = useCallback((id: string | null) => {
@@ -81,6 +87,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => { setData(userId, STORAGE_KEYS.notifications, notifications); }, [userId, notifications]);
   useEffect(() => { setData(userId, STORAGE_KEYS.apiKeys, apiKeys); }, [userId, apiKeys]);
   useEffect(() => { setData(userId, STORAGE_KEYS.settings, settings); }, [userId, settings]);
+  useEffect(() => { setData(userId, STORAGE_KEYS.searchHistory, searchHistory); }, [userId, searchHistory]);
 
   // ---- Actions ----
 
@@ -155,6 +162,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setSettingsState((prev) => ({ ...prev, ...partial }));
   }, []);
 
+  const addSearchHistory = useCallback((entry: { query: string; resultCount: number }) => {
+    setSearchHistoryState((prev) => {
+      const filtered = prev.filter((e) => e.query.toLowerCase() !== entry.query.toLowerCase());
+      const next: SearchHistoryEntry[] = [{ query: entry.query, timestamp: Date.now(), resultCount: entry.resultCount }, ...filtered];
+      return next.slice(0, 20);
+    });
+  }, []);
+
+  const clearSearchHistory = useCallback(() => {
+    setSearchHistoryState([]);
+  }, []);
+
   const clearData = useCallback(() => {
     setBusinessesState([]);
     setLeadsState([]);
@@ -176,6 +195,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setUserId,
         setBusinesses: setBusinessesState,
         addBusinesses,
+        searchHistory,
         setLeads: setLeadsState,
         moveLead,
         addLead,
@@ -188,6 +208,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setApiKeys,
         setSettings,
         clearData,
+        addSearchHistory,
+        clearSearchHistory,
       }}
     >
       {children}

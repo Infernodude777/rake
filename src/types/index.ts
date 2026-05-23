@@ -133,6 +133,14 @@ export const DEFAULT_RATE_LIMITS: RateLimitPreset = {
   llm: { rpm: 30, rpd: 5000 },
 };
 
+// === Search History ===
+
+export interface SearchHistoryEntry {
+  query: string;
+  timestamp: number;
+  resultCount: number;
+}
+
 // === Settings ===
 
 export interface AppSettings {

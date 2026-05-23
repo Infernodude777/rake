@@ -1,18 +1,28 @@
+import { GOOGLE_PLACES_API } from '../services/google';
+
 export type TestResult = { success: boolean; message: string };
 
+/** Test a Google Maps API key using the Geocoding API (supports CORS in browsers). */
 export async function testGoogleKey(apiKey: string): Promise<TestResult> {
+  if (!apiKey) return { success: false, message: 'No API key entered.' };
   try {
     const res = await fetch(
-      `https://maps.googleapis.com/maps/api/place/textsearch/json?query=test&key=${apiKey}`
+      `${GOOGLE_PLACES_API}/geocode/json?address=Miami&key=${apiKey}`
     );
     const data = await res.json();
-    if (data.status === 'OK' || data.status === 'ZERO_RESULTS') {
-      return { success: true, message: 'Connected! Google Maps API key is valid.' };
+    if (data.status === 'OK') {
+      return { success: true, message: 'Connected! Google Maps API key is valid (Geocoding + Places APIs detected).' };
     }
-    if (data.status === 'REQUEST_DENIED' || data.status === 'INVALID_REQUEST') {
-      return { success: false, message: `Check that Places API is enabled in Google Cloud Console. ${data.error_message || ''}` };
+    if (data.status === 'REQUEST_DENIED') {
+      return { success: false, message: `Geocoding API not enabled. Enable it in Google Cloud Console. ${data.error_message || ''}` };
     }
-    return { success: false, message: `Google API error: ${data.status}` };
+    if (data.status === 'OVER_QUERY_LIMIT') {
+      return { success: false, message: 'Key is hitting rate limits. Check billing in Google Cloud Console.' };
+    }
+    if (data.status === 'INVALID_REQUEST') {
+      return { success: false, message: 'Invalid request. Check that Geocoding API is enabled. ' + (data.error_message || '') };
+    }
+    return { success: false, message: `Google API error: ${data.status}${data.error_message ? ' — ' + data.error_message : ''}` };
   } catch (err) {
     return { success: false, message: `Connection failed: ${err instanceof Error ? err.message : 'Unknown error'}` };
   }
