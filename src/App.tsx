@@ -62,7 +62,7 @@ export default function App() {
       case 'dashboard': return <Dashboard onNavigate={setActivePage} />;
       case 'discover': return <Discover onNavigate={setActivePage} onOpenSiteEditor={handleOpenSiteEditor} />;
       case 'leads': return <Leads />;
-      case 'websites': return <Websites />;
+      case 'websites': return <Websites onOpenSiteEditor={handleOpenSiteEditor} />;
       case 'outreach': return <Outreach />;
       case 'analytics': return <Analytics />;
       case 'settings': return <Settings />;

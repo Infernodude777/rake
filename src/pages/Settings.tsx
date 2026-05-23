@@ -166,6 +166,8 @@ export default function Settings() {
           <div>
             <label className="text-xs text-zinc-500 block mb-1">Workspace Name</label>
             <input
+              id="workspace-name"
+              name="workspaceName"
               value={settings.workspaceName}
               onChange={(e) => setSettings({ workspaceName: e.target.value })}
               className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-zinc-600 transition-colors"
@@ -174,6 +176,8 @@ export default function Settings() {
           <div>
             <label className="text-xs text-zinc-500 block mb-1">Display Name</label>
             <input
+              id="user-name"
+              name="userName"
               value={settings.userName}
               onChange={(e) => setSettings({ userName: e.target.value })}
               className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-zinc-600 transition-colors"
@@ -212,6 +216,8 @@ export default function Settings() {
                     </div>
                     <div className="relative">
                       <input
+                        id={field.id}
+                        name={field.id}
                         type={isApiKey && !visibleKeys.has(field.id) ? 'password' : 'text'}
                         value={apiKeys[field.id]}
                         onChange={(e) => setApiKeys({ ...apiKeys, [field.id]: e.target.value })}
@@ -306,42 +312,46 @@ export default function Settings() {
                 <div className="text-xs text-zinc-400 capitalize">{service}</div>
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-[10px] text-zinc-500">RPM</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={999}
-                  value={config.rpm}
-                  onChange={(e) => {
-                    const rpm = Math.max(1, parseInt(e.target.value) || 1);
-                    setSettings({
-                      rateLimits: {
-                        ...settings.rateLimits,
-                        [service]: { ...config, rpm },
-                      },
-                    });
-                  }}
-                  className="w-16 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-center focus:outline-none focus:border-zinc-600 transition-colors"
-                />
+                <label className="text-[10px] text-zinc-500">RPM</label>                  <input
+                    id={`rpm-${service}`}
+                    name={`rpm-${service}`}
+                    type="number"
+                    min={1}
+                    max={999}
+                    value={config.rpm}
+                    onChange={(e) => {
+                      const rpm = Math.max(1, parseInt(e.target.value) || 1);
+                      setSettings({
+                        rateLimits: {
+                          ...settings.rateLimits,
+                          [service]: { ...config, rpm },
+                        },
+                      });
+                    }}
+                    className="w-16 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-center focus:outline-none focus:border-zinc-600 transition-colors"
+                  />
+              
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-[10px] text-zinc-500">RPD</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={999999}
-                  value={config.rpd}
-                  onChange={(e) => {
-                    const rpd = Math.max(1, parseInt(e.target.value) || 1);
-                    setSettings({
-                      rateLimits: {
-                        ...settings.rateLimits,
-                        [service]: { ...config, rpd },
-                      },
-                    });
-                  }}
-                  className="w-20 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-center focus:outline-none focus:border-zinc-600 transition-colors"
-                />
+                <label className="text-[10px] text-zinc-500">RPD</label>                  <input
+                    id={`rpd-${service}`}
+                    name={`rpd-${service}`}
+                    type="number"
+                    min={1}
+                    max={999999}
+                    value={config.rpd}
+                    onChange={(e) => {
+                      const rpd = Math.max(1, parseInt(e.target.value) || 1);
+                      setSettings({
+                        rateLimits: {
+                          ...settings.rateLimits,
+                          [service]: { ...config, rpd },
+                        },
+                      });
+                    }}
+                    className="w-20 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-center focus:outline-none focus:border-zinc-600 transition-colors"
+                  />
+                
               </div>
               <button
                 onClick={() => {

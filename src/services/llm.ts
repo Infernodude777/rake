@@ -1,7 +1,7 @@
 import type { ApiKeys } from '../types';
 import { createRateLimiter } from '../utils/rateLimiter';
 
-export const rateLimiter = createRateLimiter('LLM', { rpm: 30, rpd: 5000 });
+export const rateLimiter = createRateLimiter('LLM', { rpm: 300, rpd: 5000 });
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -146,29 +146,94 @@ Sign it as "Maya" from the agency team.`;
   return response.content;
 }
 
-/** Generate a website hero section and tagline */
+/** Generate full website content for all sections */
 export async function generateWebsiteContent(keys: ApiKeys, business: {
   name: string;
   category: string;
   location: string;
+  issues: string[];
   variant: string;
-}): Promise<{ hero: string; tagline: string }> {
-  const prompt = `Generate a website hero headline and tagline for ${business.name}, a ${business.category} in ${business.location}.
+}): Promise<{
+  hero: string;
+  tagline: string;
+  aboutTitle: string;
+  aboutText: string;
+  servicesTitle: string;
+  services: { name: string; description: string }[];
+  galleryTitle: string;
+  contactTitle: string;
+  contactEmail: string;
+  contactPhone: string;
+  contactAddress: string;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+  visibleSections: string[];
+}> {
+  const prompt = `Generate complete website content for ${business.name}, a ${business.category} in ${business.location}.
 Style variant: ${business.variant}
+Detected issues: ${business.issues.join(', ') || 'None'}
 
-Return JSON: { "hero": "short compelling headline (5-8 words)", "tagline": "one-line value proposition (10-15 words)" }`;
+Return a JSON object with EXACTLY these fields:
+- hero: short compelling headline (5-8 words)
+- tagline: one-line value proposition (10-15 words)
+- aboutTitle: section heading like "About ${business.name}"
+- aboutText: 2-3 sentences describing the business and what makes them great
+- servicesTitle: section heading like "Our Services"
+- services: array of { name, description } objects (3-4 services typical for this industry)
+- galleryTitle: section heading like "Our Work"
+- contactTitle: section heading like "Get In Touch"
+- contactEmail: a realistic email address for this business
+- contactPhone: a realistic phone number
+- contactAddress: the location address
+- primaryColor: hex color for primary brand color
+- secondaryColor: hex color for secondary brand color
+- accentColor: hex color for accent/highlight color
+- visibleSections: array containing ALL of these: ["about", "services", "gallery", "contact"]
+
+Return ONLY valid JSON, no markdown, no code fences.`;
 
   const response = await chatCompletion(keys, [
-    { role: 'system', content: 'You are a copywriter. Return only valid JSON.' },
+    { role: 'system', content: 'You are a professional web designer and copywriter. Return only valid JSON.' },
     { role: 'user', content: prompt },
-  ], { temperature: 0.7 });
+  ], { temperature: 0.7, maxTokens: 1500 });
 
   try {
-    return JSON.parse(response.content);
+    const parsed = JSON.parse(response.content);
+    return {
+      hero: parsed.hero || `Premium ${business.category.toLowerCase()} services in ${business.location.split(',')[0]}`,
+      tagline: parsed.tagline || 'Professional, modern, and built for your success.',
+      aboutTitle: parsed.aboutTitle || `About ${business.name}`,
+      aboutText: parsed.aboutText || `${business.name} provides quality ${business.category.toLowerCase()} services to the ${business.location.split(',')[0]} area.`,
+      servicesTitle: parsed.servicesTitle || 'Our Services',
+      services: Array.isArray(parsed.services) ? parsed.services : [{ name: business.category, description: `Professional ${business.category.toLowerCase()} services` }],
+      galleryTitle: parsed.galleryTitle || 'Our Work',
+      contactTitle: parsed.contactTitle || 'Get In Touch',
+      contactEmail: parsed.contactEmail || 'info@' + business.name.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com',
+      contactPhone: parsed.contactPhone || '(555) 000-0000',
+      contactAddress: parsed.contactAddress || business.location,
+      primaryColor: parsed.primaryColor || '#2563eb',
+      secondaryColor: parsed.secondaryColor || '#64748b',
+      accentColor: parsed.accentColor || '#7c3aed',
+      visibleSections: Array.isArray(parsed.visibleSections) ? parsed.visibleSections : ['about', 'services', 'gallery', 'contact'],
+    };
   } catch {
     return {
       hero: `Premium ${business.category.toLowerCase()} services in ${business.location.split(',')[0]}`,
       tagline: 'Professional, modern, and built for your success.',
+      aboutTitle: `About ${business.name}`,
+      aboutText: `${business.name} provides quality ${business.category.toLowerCase()} services to the ${business.location.split(',')[0]} area.`,
+      servicesTitle: 'Our Services',
+      services: [{ name: business.category, description: `Professional ${business.category.toLowerCase()} services` }],
+      galleryTitle: 'Our Work',
+      contactTitle: 'Get In Touch',
+      contactEmail: 'info@' + business.name.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com',
+      contactPhone: '(555) 000-0000',
+      contactAddress: business.location,
+      primaryColor: '#2563eb',
+      secondaryColor: '#64748b',
+      accentColor: '#7c3aed',
+      visibleSections: ['about', 'services', 'gallery', 'contact'],
     };
   }
 }

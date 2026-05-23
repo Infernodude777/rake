@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useCallback, useState, type ReactNode } from 'react';
-import type { Business, Lead, Website, Notification, ApiKeys, LeadStage, AppSettings, SearchHistoryEntry } from '../types';
+import type { Business, Lead, Website, Notification, ApiKeys, LeadStage, AppSettings, SearchHistoryEntry, GeneratedSite } from '../types';
 import { LEAD_STAGES, DEFAULT_API_KEYS, DEFAULT_RATE_LIMITS } from '../types';
 import { getData, setData, clearAllUserData } from '../services/storage';
 
@@ -17,6 +17,7 @@ const STORAGE_KEYS = {
   apiKeys: 'apiKeys',
   settings: 'settings',
   searchHistory: 'searchHistory',
+  siteData: 'siteData',
 } as const;
 
 // ---- Context Type ----
@@ -30,6 +31,7 @@ interface DataContextType {
   apiKeys: ApiKeys;
   settings: AppSettings;
   searchHistory: SearchHistoryEntry[];
+  siteData: Record<number, GeneratedSite>;
 
   setUserId: (id: string | null) => void;
   setBusinesses: (businesses: Business[]) => void;
@@ -38,6 +40,7 @@ interface DataContextType {
   moveLead: (leadId: number, newStage?: LeadStage) => void;
   addLead: (lead: Lead) => void;
   addWebsite: (website: Website) => void;
+  setSiteData: (id: number, data: GeneratedSite) => void;
   updateWebsite: (id: number, updates: Partial<Website>) => void;
   deployWebsite: (id: number) => void;
   addNotification: (message: string) => void;
@@ -62,6 +65,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotificationsState] = useState<Notification[]>(DEFAULT_NOTIFICATIONS);
   const [apiKeys, setApiKeysState] = useState<ApiKeys>(DEFAULT_API_KEYS);
   const [searchHistory, setSearchHistoryState] = useState<SearchHistoryEntry[]>([]);
+  const [siteData, setSiteDataState] = useState<Record<number, GeneratedSite>>({});
   const [settings, setSettingsState] = useState<AppSettings>({ workspaceName: 'My Workspace', userName: 'User', rateLimits: { ...DEFAULT_RATE_LIMITS } });
 
   // Load data from localStorage when userId changes
@@ -73,6 +77,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setApiKeysState(getData<ApiKeys>(uid, STORAGE_KEYS.apiKeys, DEFAULT_API_KEYS));
     setSettingsState(getData<AppSettings>(uid, STORAGE_KEYS.settings, { workspaceName: 'My Workspace', userName: 'User', rateLimits: { ...DEFAULT_RATE_LIMITS } }));
     setSearchHistoryState(getData<SearchHistoryEntry[]>(uid, STORAGE_KEYS.searchHistory, []));
+    setSiteDataState(getData<Record<number, GeneratedSite>>(uid, STORAGE_KEYS.siteData, {}));
   }, []);
 
   const setUserId = useCallback((id: string | null) => {
@@ -88,6 +93,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => { setData(userId, STORAGE_KEYS.apiKeys, apiKeys); }, [userId, apiKeys]);
   useEffect(() => { setData(userId, STORAGE_KEYS.settings, settings); }, [userId, settings]);
   useEffect(() => { setData(userId, STORAGE_KEYS.searchHistory, searchHistory); }, [userId, searchHistory]);
+  useEffect(() => { setData(userId, STORAGE_KEYS.siteData, siteData); }, [userId, siteData]);
 
   // ---- Actions ----
 
@@ -162,6 +168,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setSettingsState((prev) => ({ ...prev, ...partial }));
   }, []);
 
+  const setSiteData = useCallback((id: number, data: GeneratedSite) => {
+    setSiteDataState((prev) => ({ ...prev, [id]: data }));
+  }, []);
+
   const addSearchHistory = useCallback((entry: { query: string; resultCount: number }) => {
     setSearchHistoryState((prev) => {
       const filtered = prev.filter((e) => e.query.toLowerCase() !== entry.query.toLowerCase());
@@ -196,6 +206,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setBusinesses: setBusinessesState,
         addBusinesses,
         searchHistory,
+        siteData,
+        setSiteData,
         setLeads: setLeadsState,
         moveLead,
         addLead,

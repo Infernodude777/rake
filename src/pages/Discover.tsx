@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, MapPin, Zap, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { findBusinesses, searchPlaces, rateLimiter as googleLimiter } from '../services/google';
-import { scoreOpportunity, rateLimiter as llmLimiter } from '../services/llm';
+import { scoreOpportunity, generateWebsiteContent, rateLimiter as llmLimiter } from '../services/llm';
 import { RateLimitError } from '../utils/rateLimiter';
 import BusinessCard from '../components/BusinessCard';
 import ErrorBoundary from '../components/ErrorBoundary';
-import type { Business } from '../types';
+import type { Business, GeneratedSite } from '../types';
 
 interface ServiceStatus {
   id: string;
@@ -57,7 +57,7 @@ interface DiscoverProps {
 }
 
 export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps) {
-  const { apiKeys, addBusinesses, businesses, addLead, addWebsite, addNotification, settings, searchHistory, addSearchHistory, clearSearchHistory } = useData();
+  const { apiKeys, addBusinesses, businesses, addLead, addWebsite, addNotification, settings, searchHistory, addSearchHistory, clearSearchHistory, setSiteData } = useData();
   const [query, setQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
@@ -91,8 +91,10 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
 
       // Parse query: "dentists in miami" → term: "dentists", location: "miami"
       const parts = queryLower.split(/\s+in\s+/);
-      const term = parts[0] || queryLower;
+      let term = parts[0] || queryLower;
       const location = parts[1] || '';
+      if (!term.trim()) term = parts[1] ? 'businesses' : queryLower;
+      if (!term.trim()) throw new Error('Please enter a search term (e.g. "dentists in miami" or "plumbers")');
 
       // ── Google Places Search ──
       if (apiKeys.googleMapsApiKey) {
@@ -214,45 +216,57 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
         return;
       }
 
-      // Score each business using LLM
+      // Score each business using LLM (in parallel batches)
       if (apiKeys.llmApiKey && results.length > 0) {
         updateStatus('llm', { status: 'loading', message: `Scoring ${results.length} businesses...` });
         let scoredCount = 0;
-        for (const biz of results) {
-          try {
-            const scores = await scoreOpportunity(apiKeys, {
-              name: biz.name,
-              category: biz.category,
-              location: biz.location,
-              rating: biz.rating,
-              reviews: biz.reviews,
-              issues: biz.issues,
-              tech: biz.tech,
-            });
-            biz.opportunityScore = scores.opportunityScore ?? 50;
-            biz.seoScore = scores.seoScore ?? 50;
-            biz.mobileScore = scores.mobileScore ?? 50;
-            biz.urgency = scores.urgency ?? 50;
-            biz.closeProbability = scores.closeProbability ?? 50;
-            if (scores.summary) {
-              biz.issues = biz.issues.length > 0 ? biz.issues : [scores.summary];
-            }
-            scoredCount++;
-            updateStatus('llm', { message: `Scored ${scoredCount}/${results.length}...` });
-          } catch (e: any) {
-            if (e instanceof RateLimitError) {
-              updateStatus('llm', { status: 'rate-limited', message: `Rate limited — resets in ${Math.ceil(e.retryAfterMs / 60000)} min` });
-              addNotification(`⏳ LLM rate limited — scoring ${biz.name} skipped (resets in ${Math.ceil(e.retryAfterMs / 60000)} min)`);
+
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < results.length; i += BATCH_SIZE) {
+          const batch = results.slice(i, i + BATCH_SIZE);
+          const batchResults = await Promise.allSettled(
+            batch.map(async (biz) => {
+              const scores = await scoreOpportunity(apiKeys, {
+                name: biz.name,
+                category: biz.category,
+                location: biz.location,
+                rating: biz.rating,
+                reviews: biz.reviews,
+                issues: biz.issues,
+                tech: biz.tech,
+              });
+              return { biz, scores };
+            })
+          );
+
+          for (let j = 0; j < batchResults.length; j++) {
+            const result = batchResults[j];
+            const biz = batch[j];
+            if (result.status === 'fulfilled') {
+              const { scores } = result.value;
+              biz.opportunityScore = scores.opportunityScore ?? 50;
+              biz.seoScore = scores.seoScore ?? 50;
+              biz.mobileScore = scores.mobileScore ?? 50;
+              biz.urgency = scores.urgency ?? 50;
+              biz.closeProbability = scores.closeProbability ?? 50;
+              if (scores.summary) {
+                biz.issues = biz.issues.length > 0 ? biz.issues : [scores.summary];
+              }
+              scoredCount++;
             } else {
-              updateStatus('llm', { message: `Scored ${scoredCount}/${results.length} (1 error)` });
+              const err = result.reason;
+              if (err instanceof RateLimitError) {
+                addNotification(`⏳ LLM rate limited — scoring ${biz.name} skipped (resets in ${Math.ceil(err.retryAfterMs / 60000)} min)`);
+              }
+              biz.opportunityScore = Math.floor(Math.random() * 30) + 60;
+              biz.seoScore = Math.floor(Math.random() * 40) + 30;
+              biz.mobileScore = Math.floor(Math.random() * 40) + 40;
+              biz.urgency = Math.floor(Math.random() * 30) + 50;
+              biz.closeProbability = Math.floor(Math.random() * 30) + 50;
             }
-            // Fallback scores
-            biz.opportunityScore = Math.floor(Math.random() * 30) + 60;
-            biz.seoScore = Math.floor(Math.random() * 40) + 30;
-            biz.mobileScore = Math.floor(Math.random() * 40) + 40;
-            biz.urgency = Math.floor(Math.random() * 30) + 50;
-            biz.closeProbability = Math.floor(Math.random() * 30) + 50;
           }
+
+          updateStatus('llm', { message: `Scored ${scoredCount}/${results.length}...` });
         }
         updateStatus('llm', { status: 'success', message: `${scoredCount} businesses scored` });
       } else if (apiKeys.llmApiKey && results.length === 0) {
@@ -285,20 +299,54 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
   };
 
   const generateWebsite = async (biz: Business) => {
-    const site = {
-      id: Date.now(),
+    const variant = ['Luxury', 'Modern', 'Minimal'][Math.floor(Math.random() * 3)];
+    const time = Date.now();
+
+    // Generate full website content using LLM
+    let content: any = null;
+    if (apiKeys.llmApiKey) {
+      try {
+        content = await generateWebsiteContent(apiKeys, {
+          name: biz.name,
+          category: biz.category,
+          location: biz.location,
+          issues: biz.issues,
+          variant,
+        });
+      } catch {
+        addNotification('AI content generation failed, using defaults for sections.');
+      }
+    }
+
+    const site: GeneratedSite = {
+      id: time,
       name: `${biz.name} • ${biz.category}`,
       business: biz.name,
-      variant: ['Luxury', 'Modern', 'Minimal'][Math.floor(Math.random() * 3)],
-      hero: `Premium ${biz.category.toLowerCase()} services in ${biz.location.split(',')[0]}`,
+      variant,
+      hero: content?.hero || `Premium ${biz.category.toLowerCase()} services in ${biz.location.split(',')[0]}`,
+      tagline: content?.tagline || 'Professional, modern, and built for your success.',
       issues: biz.issues,
       score: biz.opportunityScore,
+      aboutTitle: content?.aboutTitle || `About ${biz.name}`,
+      aboutText: content?.aboutText || `${biz.name} provides quality ${biz.category.toLowerCase()} services to the ${biz.location.split(',')[0]} area.`,
+      servicesTitle: content?.servicesTitle || 'Our Services',
+      services: content?.services || [{ name: biz.category, description: `Professional ${biz.category.toLowerCase()} services` }],
+      galleryTitle: content?.galleryTitle || 'Our Work',
+      contactTitle: content?.contactTitle || 'Get In Touch',
+      contactEmail: content?.contactEmail || '',
+      contactPhone: biz.phone || content?.contactPhone || '',
+      contactAddress: content?.contactAddress || biz.location,
+      primaryColor: content?.primaryColor || '#2563eb',
+      secondaryColor: content?.secondaryColor || '#64748b',
+      accentColor: content?.accentColor || '#7c3aed',
+      visibleSections: content?.visibleSections || ['about', 'services', 'gallery', 'contact'],
     };
 
     onOpenSiteEditor(site);
+    setSiteData(time + 1, site);
 
     addWebsite({
-      id: Date.now(),
+      id: time + 1,
       name: site.name,
       business: biz.name,
       status: 'draft',
@@ -306,11 +354,13 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
       conversion: 0,
       variant: site.variant,
       opportunityScore: biz.opportunityScore,
+      heroHeadline: site.hero,
+      issues: biz.issues,
       createdAt: Date.now(),
     });
 
     addLead({
-      id: Date.now(),
+      id: time + 2,
       business: biz.name,
       businessId: biz.id,
       stage: 'discovered',
@@ -320,7 +370,7 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
       createdAt: Date.now(),
     });
 
-    addNotification(`Website generated for ${biz.name}`);
+    addNotification(`Website generated for ${biz.name}${content ? ' with AI content' : ''}`);
     onNavigate('websites');
   };
 

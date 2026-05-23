@@ -1,5 +1,11 @@
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Monitor, Smartphone, Check, Eye, EyeOff,
+  Palette, Layout, Type, Image,
+} from 'lucide-react';
 import type { GeneratedSite } from '../types';
+import { useData } from '../context/DataContext';
 
 interface SiteEditorProps {
   open: boolean;
@@ -8,61 +14,654 @@ interface SiteEditorProps {
   onPublish: () => void;
 }
 
+// ── Template style definitions ──
+
+const TEMPLATES: Record<string, {
+  fontFamily: string;
+  headingFont: string;
+  heroBg: string;
+  heroText: string;
+  sectionBg: string;
+  sectionText: string;
+  accent: string;
+  cardBg: string;
+  border: string;
+  buttonBg: string;
+  buttonText: string;
+  footerBg: string;
+  footerText: string;
+  heroPattern?: string;
+  headingWeight: string;
+  bodyWeight: string;
+  borderRadius: string;
+}> = {
+  Luxury: {
+    fontFamily: "'Georgia', 'Times New Roman', serif",
+    headingFont: "'Georgia', serif",
+    headingWeight: '700',
+    bodyWeight: '400',
+    heroBg: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+    heroText: '#f5f0e8',
+    sectionBg: '#faf6f0',
+    sectionText: '#2d2d2d',
+    accent: '#c9a84c',
+    cardBg: '#ffffff',
+    border: '#e8dcc8',
+    buttonBg: '#c9a84c',
+    buttonText: '#1a1a2e',
+    footerBg: '#1a1a2e',
+    footerText: '#f5f0e8',
+    heroPattern: 'url("data:image/svg+xml,%3Csvg width=60 height=60 viewBox=0 0 60 60 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cg fill=%22none%22 fill-rule=%22evenodd%22%3E%3Cg fill=%22%23ffffff%22 fill-opacity=%220.03%22%3E%3Cpath d=%22M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z%22/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")',
+    borderRadius: '8px',
+  },
+  Modern: {
+    fontFamily: "'Inter', 'system-ui', sans-serif",
+    headingFont: "'Inter', sans-serif",
+    headingWeight: '800',
+    bodyWeight: '400',
+    heroBg: 'linear-gradient(135deg, #0f0f13 0%, #1a1a2e 50%, #2d1b69 100%)',
+    heroText: '#ffffff',
+    sectionBg: '#0f0f13',
+    sectionText: '#e4e4e7',
+    accent: '#7c3aed',
+    cardBg: '#18181b',
+    border: '#27272a',
+    buttonBg: '#7c3aed',
+    buttonText: '#ffffff',
+    footerBg: '#09090b',
+    footerText: '#a1a1aa',
+    borderRadius: '16px',
+  },
+  Minimal: {
+    fontFamily: "'Inter', 'system-ui', sans-serif",
+    headingFont: "'Inter', sans-serif",
+    headingWeight: '600',
+    bodyWeight: '400',
+    heroBg: '#ffffff',
+    heroText: '#111111',
+    sectionBg: '#fafafa',
+    sectionText: '#333333',
+    accent: '#2563eb',
+    cardBg: '#ffffff',
+    border: '#e5e7eb',
+    buttonBg: '#111111',
+    buttonText: '#ffffff',
+    footerBg: '#111111',
+    footerText: '#a1a1aa',
+    borderRadius: '4px',
+  },
+};
+
+const SECTION_META: { id: string; label: string; icon: typeof Layout }[] = [
+  { id: 'about', label: 'About', icon: Type },
+  { id: 'services', label: 'Services', icon: Layout },
+  { id: 'gallery', label: 'Gallery', icon: Image },
+  { id: 'contact', label: 'Contact', icon: Type },
+];
+
+// ── Inline editable text field ──
+
+function EditableField({
+  value,
+  onChange,
+  className,
+  style,
+  as = 'span',
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+  style?: React.CSSProperties;
+  as?: 'span' | 'h1' | 'h2' | 'h3' | 'p';
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  const handleSave = () => {
+    onChange(draft);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="relative group" style={style}>
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={handleSave}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSave();
+            if (e.key === 'Escape') { setDraft(value); setEditing(false); }
+          }}
+          className={`bg-white/10 border border-white/30 rounded px-2 py-1 w-full outline-none focus:border-white/60 transition-colors ${className || ''}`}
+          autoFocus
+        />
+        <button
+          onClick={handleSave}
+          className="absolute -top-2 -right-2 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+        >
+          <Check size={8} className="text-white" />
+        </button>
+      </div>
+    );
+  }
+
+  const Tag = as;
+  return (
+    <Tag
+      onClick={() => { setDraft(value); setEditing(true); }}
+      className={`cursor-pointer hover:ring-1 hover:ring-white/20 rounded transition-all ${className || ''}`}
+      style={style}
+      title="Click to edit"
+    >
+      {value || 'Click to add text'}
+    </Tag>
+  );
+}
+
+// ── Main Component ──
+
 export default function SiteEditor({ open, site, onClose, onPublish }: SiteEditorProps) {
-  if (!site) return null;
+  const { addNotification } = useData();
+  const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
+  const [activeTab, setActiveTab] = useState<'content' | 'theme' | 'sections'>('content');
+  const [copied, setCopied] = useState(false);
+
+  // Editable site state
+  const [editableSite, setEditableSite] = useState<GeneratedSite | null>(null);
+
+  // Reset edits when a different site is opened
+  useEffect(() => {
+    setEditableSite(null);
+  }, [site?.id]);
+
+  // Use editable copy if available, otherwise fall back to the site prop
+  const currentSite = site && editableSite?.id === site.id ? editableSite : site;
+
+  if (!currentSite) return null;
+
+  const updateSite = (updates: Partial<GeneratedSite>) => {
+    if (!editableSite) {
+      setEditableSite({ ...currentSite, ...updates });
+    } else {
+      setEditableSite({ ...editableSite, ...updates });
+    }
+  };
+
+  const toggleSection = (sectionId: string) => {
+    const current = (editableSite || currentSite);
+    const vis = current.visibleSections.includes(sectionId)
+      ? current.visibleSections.filter((s) => s !== sectionId)
+      : [...current.visibleSections, sectionId];
+    updateSite({ visibleSections: vis });
+  };
+
+  const template = TEMPLATES[currentSite.variant] || TEMPLATES.Modern;
+
+  // ── Preview styles ──
+  const previewStyle: React.CSSProperties = {
+    fontFamily: template.fontFamily,
+    color: template.sectionText,
+    backgroundColor: template.sectionBg,
+    borderRadius: template.borderRadius,
+  };
+
+  const heroStyle: React.CSSProperties = {
+    background: template.heroBg,
+    color: template.heroText,
+    backgroundSize: 'cover',
+  };
+
+  const cardStyle: React.CSSProperties = {
+    backgroundColor: template.cardBg,
+    border: `1px solid ${template.border}`,
+    borderRadius: template.borderRadius,
+  };
+
+  const buttonStyle: React.CSSProperties = {
+    backgroundColor: template.buttonBg,
+    color: template.buttonText,
+    borderRadius: template.borderRadius,
+    fontWeight: 600,
+  };
+
+  const footerStyle: React.CSSProperties = {
+    backgroundColor: template.footerBg,
+    color: template.footerText,
+  };
+
+  const accentStyle: React.CSSProperties = {
+    color: template.accent,
+  };
+
+  // ── Copy HTML handler ──
+  const handleCopyHtml = () => {
+    const previewEl = document.getElementById('site-preview-content');
+    if (previewEl) {
+      const html = previewEl.innerHTML;
+      navigator.clipboard.writeText(html).then(() => {
+        setCopied(true);
+        addNotification('Site HTML copied to clipboard!');
+        setTimeout(() => setCopied(false), 2000);
+      });
+    }
+  };
+
+  // ── Check if a section is visible ──
+  const isVisible = (id: string) => {
+    return currentSite.visibleSections.includes(id);
+  };
+
+  // ── Render the website preview ──
+  const renderPreview = () => (
+    <div
+      id="site-preview-content"
+      style={{
+        ...previewStyle,
+        maxWidth: previewMode === 'mobile' ? 375 : '100%',
+        margin: '0 auto',
+        transition: 'all 0.3s ease',
+        overflow: 'hidden',
+      }}
+    >
+      {/* ── Hero Section ── */}
+      <section style={{ ...heroStyle, padding: '80px 40px', textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
+        {template.heroPattern && (
+          <div style={{ position: 'absolute', inset: 0, backgroundImage: template.heroPattern, opacity: 0.5 }} />
+        )}
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <EditableField
+            value={currentSite.hero}
+            onChange={(v) => updateSite({ hero: v })}
+            as="h1"
+            className="text-4xl md:text-5xl lg:text-6xl leading-tight"
+            style={{ fontWeight: template.headingWeight, marginBottom: 16, letterSpacing: '-0.02em' }}
+          />
+          <EditableField
+            value={currentSite.tagline}
+            onChange={(v) => updateSite({ tagline: v })}
+            as="p"
+            className="text-lg md:text-xl opacity-80 max-w-2xl mx-auto"
+            style={{ marginBottom: 32, lineHeight: 1.6 }}
+          />
+          <button style={{ ...buttonStyle, padding: '14px 36px', fontSize: 16, cursor: 'pointer', border: 'none', transition: 'transform 0.2s' }}>
+            Get Started
+          </button>
+        </div>
+      </section>
+
+      {/* ── About Section ── */}
+      {isVisible('about') && (
+        <section style={{ padding: '60px 40px', maxWidth: 800, margin: '0 auto' }}>
+          <EditableField
+            value={currentSite.aboutTitle}
+            onChange={(v) => updateSite({ aboutTitle: v })}
+            as="h2"
+            className="text-3xl"
+            style={{ fontWeight: template.headingWeight, marginBottom: 20, ...accentStyle }}
+          />
+          <EditableField
+            value={currentSite.aboutText}
+            onChange={(v) => updateSite({ aboutText: v })}
+            as="p"
+            className="text-base leading-relaxed"
+            style={{ lineHeight: 1.8, opacity: 0.85 }}
+          />
+        </section>
+      )}
+
+      {/* ── Services Section ── */}
+      {isVisible('services') && (
+        <section style={{ padding: '60px 40px', backgroundColor: template.cardBg }}>
+          <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+            <EditableField
+              value={currentSite.servicesTitle}
+              onChange={(v) => updateSite({ servicesTitle: v })}
+              as="h2"
+              className="text-3xl text-center"
+              style={{ fontWeight: template.headingWeight, marginBottom: 40, ...accentStyle }}
+            />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 24 }}>
+              {currentSite.services.map((svc, i) => (
+                <div key={i} style={{ ...cardStyle, padding: 28, transition: 'transform 0.2s' }}>
+                  <h3 style={{ ...accentStyle, fontSize: 18, fontWeight: 600, marginBottom: 8 }}>{svc.name}</h3>
+                  <p style={{ fontSize: 14, lineHeight: 1.6, opacity: 0.75 }}>{svc.description}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── Gallery Section ── */}
+      {isVisible('gallery') && (
+        <section style={{ padding: '60px 40px', maxWidth: 1000, margin: '0 auto' }}>
+          <EditableField
+            value={currentSite.galleryTitle}
+            onChange={(v) => updateSite({ galleryTitle: v })}
+            as="h2"
+            className="text-3xl text-center"
+            style={{ fontWeight: template.headingWeight, marginBottom: 40, ...accentStyle }}
+          />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+            {[1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                style={{
+                  ...cardStyle,
+                  aspectRatio: '4/3',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 12,
+                  opacity: 0.5,
+                  color: template.accent,
+                }}
+              >
+                <Image size={24} />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Contact Section ── */}
+      {isVisible('contact') && (
+        <section style={{ padding: '60px 40px', backgroundColor: template.cardBg }}>
+          <div style={{ maxWidth: 600, margin: '0 auto', textAlign: 'center' }}>
+            <EditableField
+              value={currentSite.contactTitle}
+              onChange={(v) => updateSite({ contactTitle: v })}
+              as="h2"
+              className="text-3xl"
+              style={{ fontWeight: template.headingWeight, marginBottom: 24, ...accentStyle }}
+            />
+            <div style={{ fontSize: 15, lineHeight: 2, opacity: 0.8 }}>
+              {currentSite.contactAddress && <div>{currentSite.contactAddress}</div>}
+              {currentSite.contactPhone && <div>{currentSite.contactPhone}</div>}
+              {currentSite.contactEmail && <div>{currentSite.contactEmail}</div>}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── Footer ── */}
+      <footer style={{ ...footerStyle, padding: '32px 40px', textAlign: 'center', fontSize: 13, opacity: 0.7 }}>
+        &copy; {new Date().getFullYear()} {currentSite.business}. All rights reserved.
+      </footer>
+    </div>
+  );
 
   return (
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-8" onClick={onClose}>
+        <div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4" onClick={onClose}>
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="max-w-[980px] w-full bg-zinc-950 border border-zinc-800 rounded-3xl overflow-hidden"
+            className="w-full max-w-[1200px] h-[90vh] bg-zinc-950 border border-zinc-800 rounded-3xl overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="border-b border-zinc-800 px-8 py-5 flex items-center justify-between">
-              <div>
-                <div className="font-semibold tracking-tight">{site.name}</div>
-                <div className="text-xs text-zinc-500">Visual Editor • {site.variant}</div>
+            {/* ── Header Bar ── */}
+            <div className="border-b border-zinc-800 px-6 py-4 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-4">
+                <div>
+                  <div className="font-semibold tracking-tight text-lg">{currentSite.name}</div>
+                  <div className="text-xs text-zinc-500">Visual Editor • {currentSite.variant}</div>
+                </div>
+                {/* Template selector */}
+                <div className="flex items-center gap-1 ml-8 bg-zinc-900 rounded-xl p-1 border border-zinc-800">
+                  {Object.keys(TEMPLATES).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => updateSite({ variant: t })}
+                      className={`px-3 py-1.5 text-[10px] rounded-lg transition-all ${
+                        currentSite.variant === t
+                          ? 'bg-zinc-700 text-white font-medium'
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPreviewMode(previewMode === 'desktop' ? 'mobile' : 'desktop')}
+                  className="px-3 py-2 rounded-xl bg-zinc-900 text-zinc-400 hover:text-white transition-colors"
+                  title={previewMode === 'desktop' ? 'Mobile preview' : 'Desktop preview'}
+                >
+                  {previewMode === 'desktop' ? <Smartphone size={15} /> : <Monitor size={15} />}
+                </button>
+                <button
+                  onClick={handleCopyHtml}
+                  className={`px-3 py-2 rounded-xl text-[10px] transition-colors ${
+                    copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-900 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  {copied ? 'Copied!' : 'Copy HTML'}
+                </button>
                 <button
                   onClick={onClose}
-                  className="px-6 py-2 rounded-full bg-zinc-900 text-sm hover:bg-zinc-800 transition-colors"
+                  className="px-5 py-2 rounded-xl bg-zinc-900 text-sm hover:bg-zinc-800 transition-colors"
                 >
                   Close
                 </button>
                 <button
                   onClick={onPublish}
-                  className="px-6 py-2 rounded-full bg-white text-black text-sm font-medium hover:bg-zinc-200 transition-colors"
+                  className="px-6 py-2 rounded-xl bg-white text-black text-sm font-medium hover:bg-zinc-200 transition-colors"
                 >
                   Publish Live
                 </button>
               </div>
             </div>
 
-            <div className="p-9 bg-zinc-900/70">
-              <div className="aspect-video bg-zinc-950 rounded-2xl flex items-center justify-center border border-zinc-800">
-                <div className="text-center max-w-sm">
-                  <div className="font-medium text-3xl tracking-tight mb-3">{site.hero}</div>
-                  <div className="text-emerald-400 text-sm">
-                    AI-optimized hero section • {site.score} opportunity score
-                  </div>
-                  <div className="mt-8 flex justify-center gap-2 text-xs flex-wrap">
-                    {site.issues.map((issue, idx) => (
-                      <div key={idx} className="px-4 py-1 border border-white/20 rounded-full">
-                        {issue}
+            {/* ── Main Content ── */}
+            <div className="flex flex-1 overflow-hidden">
+              {/* Preview panel */}
+              <div className="flex-1 overflow-y-auto bg-zinc-900/50 p-6">
+                <div
+                  style={{
+                    borderRadius: 12,
+                    overflow: 'hidden',
+                    boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+                  }}
+                >
+                  {renderPreview()}
+                </div>
+              </div>
+
+              {/* Right panel */}
+              <div className="w-72 border-l border-zinc-800 flex flex-col flex-shrink-0 bg-zinc-950">
+                {/* Tabs */}
+                <div className="flex border-b border-zinc-800">
+                  {[
+                    { id: 'content', label: 'Content' },
+                    { id: 'sections', label: 'Sections' },
+                    { id: 'theme', label: 'Theme' },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id as any)}
+                      className={`flex-1 py-3 text-[10px] font-medium uppercase tracking-wider transition-colors ${
+                        activeTab === tab.id
+                          ? 'text-white border-b-2 border-white'
+                          : 'text-zinc-600 hover:text-zinc-400'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  {/* ── Content Tab ── */}
+                  {activeTab === 'content' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-[10px] text-zinc-500 uppercase tracking-wider block mb-1">Hero Headline</label>                          <input
+                            id="editor-hero"
+                            name="hero"
+                            value={currentSite.hero}
+                            onChange={(e) => updateSite({ hero: e.target.value })}
+                            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-zinc-600 transition-colors"
+                          />
                       </div>
+                      <div>
+                        <label className="text-[10px] text-zinc-500 uppercase tracking-wider block mb-1">Tagline</label>                          <input
+                            id="editor-tagline"
+                            name="tagline"
+                            value={currentSite.tagline}
+                            onChange={(e) => updateSite({ tagline: e.target.value })}
+                            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-zinc-600 transition-colors"
+                          />
+                      </div>
+                      {isVisible('about') && (
+                        <>
+                          <div>
+                            <label className="text-[10px] text-zinc-500 uppercase tracking-wider block mb-1">About Title</label>
+                            <input
+                              id="editor-about-title"
+                              name="aboutTitle"
+                              value={currentSite.aboutTitle}
+                              onChange={(e) => updateSite({ aboutTitle: e.target.value })}
+                              className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-zinc-600 transition-colors"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-zinc-500 uppercase tracking-wider block mb-1">About Text</label>
+                            <textarea
+                              id="editor-about-text"
+                              name="aboutText"
+                              value={currentSite.aboutText}
+                              onChange={(e) => updateSite({ aboutText: e.target.value })}
+                              rows={4}
+                              className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-zinc-600 transition-colors resize-none"
+                            />
+                          </div>
+                        </>
+                      )}
+                      {isVisible('contact') && (
+                        <>
+                          <div>
+                            <label className="text-[10px] text-zinc-500 uppercase tracking-wider block mb-1">Address</label>                              <input
+                                id="editor-contact-address"
+                                name="contactAddress"
+                                value={currentSite.contactAddress}
+                                onChange={(e) => updateSite({ contactAddress: e.target.value })}
+                                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-zinc-600 transition-colors"
+                              />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-zinc-500 uppercase tracking-wider block mb-1">Phone</label>                              <input
+                                id="editor-contact-phone"
+                                name="contactPhone"
+                                value={currentSite.contactPhone}
+                                onChange={(e) => updateSite({ contactPhone: e.target.value })}
+                                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-zinc-600 transition-colors"
+                              />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-zinc-500 uppercase tracking-wider block mb-1">Email</label>                              <input
+                                id="editor-contact-email"
+                                name="contactEmail"
+                                value={currentSite.contactEmail}
+                                onChange={(e) => updateSite({ contactEmail: e.target.value })}
+                                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-zinc-600 transition-colors"
+                              />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── Sections Tab ── */}
+                  {activeTab === 'sections' && (
+                    <div className="space-y-2">
+                      {SECTION_META.map((section) => {
+                        const visible = currentSite.visibleSections.includes(section.id);
+                        const Icon = section.icon;
+                        return (
+                          <button
+                            key={section.id}
+                            onClick={() => toggleSection(section.id)}
+                            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors bg-zinc-900 hover:bg-zinc-800"
+                          >
+                            <Icon size={15} className="text-zinc-400" />
+                            <span className="text-xs flex-1 text-left">{section.label}</span>
+                            {visible ? (
+                              <Eye size={14} className="text-emerald-400" />
+                            ) : (
+                              <EyeOff size={14} className="text-zinc-600" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* ── Theme Tab ── */}
+                  {activeTab === 'theme' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-[10px] text-zinc-500 uppercase tracking-wider block mb-2">Template</label>
+                        <div className="flex flex-col gap-1">
+                          {Object.keys(TEMPLATES).map((t) => (
+                            <button
+                              key={t}
+                              onClick={() => updateSite({ variant: t })}
+                              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs transition-all ${
+                                currentSite.variant === t
+                                  ? 'bg-zinc-800 text-white ring-1 ring-zinc-600'
+                                  : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'
+                              }`}
+                            >
+                              <Palette size={14} />
+                              {t}
+                              {currentSite.variant === t && <Check size={12} className="ml-auto text-emerald-400" />}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="border-t border-zinc-800 pt-4">
+                        <label className="text-[10px] text-zinc-500 uppercase tracking-wider block mb-3">Accent Colors</label>
+                        <div className="flex gap-3">
+                          {['#c9a84c', '#7c3aed', '#2563eb', '#059669', '#dc2626', '#0891b2', '#d946ef'].map((color) => (
+                            <button
+                              key={color}
+                              onClick={() => updateSite({ accentColor: color })}
+                              className={`w-8 h-8 rounded-xl transition-transform hover:scale-110 ${
+                                currentSite.accentColor === color ? 'ring-2 ring-white ring-offset-1 ring-offset-zinc-950' : ''
+                              }`}
+                              style={{ backgroundColor: color }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Bottom info */}
+                <div className="p-4 border-t border-zinc-800 text-[10px] text-zinc-600 space-y-1">
+                  <div className="flex justify-between">
+                    <span>Opportunity Score</span>
+                    <span className="text-white font-mono">{currentSite.score}/100</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Template</span>
+                    <span className="text-zinc-400">{currentSite.variant}</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {currentSite.issues.slice(0, 3).map((issue, i) => (
+                      <span key={i} className="px-2 py-0.5 bg-zinc-800 rounded-full text-[9px] text-zinc-400">{issue}</span>
                     ))}
                   </div>
                 </div>
               </div>
-            </div>
-            <div className="px-9 pb-9 flex items-center justify-between text-xs text-zinc-500">
-              <span>AI-generated preview • {site.variant} variant</span>
-              <span className="text-zinc-600">Visit the Websites tab to manage all your sites</span>
             </div>
           </motion.div>
         </div>

@@ -1,7 +1,12 @@
 import { useData } from '../context/DataContext';
+import type { GeneratedSite } from '../types';
 
-export default function Websites() {
-  const { websites, deployWebsite, addNotification } = useData();
+interface WebsitesProps {
+  onOpenSiteEditor?: (site: GeneratedSite) => void;
+}
+
+export default function Websites({ onOpenSiteEditor }: WebsitesProps) {
+  const { websites, siteData, deployWebsite, addNotification } = useData();
 
   const handleDeploy = (siteId: number) => {
     deployWebsite(siteId);
@@ -51,10 +56,48 @@ export default function Websites() {
                 </div>
               )}
 
-              <div className="mt-auto pt-8 flex gap-3">
-                <button className="flex-1 py-3 border border-zinc-700 text-xs tracking-widest rounded-2xl hover:bg-zinc-800 transition-colors">
-                  EDIT IN VISUAL EDITOR
-                </button>
+              <div className="mt-auto pt-8 flex gap-3">              <button
+                onClick={() => {
+                  if (!onOpenSiteEditor) {
+                    addNotification('Visual editor not available');
+                    return;
+                  }
+                  // Try to restore full site data from storage
+                  const stored = site.id ? siteData[site.id] : null;
+                  if (stored) {
+                    onOpenSiteEditor(stored);
+                  } else {
+                    // Reconstruct with defaults for fields not stored in Website
+                    const generated: GeneratedSite = {
+                      id: site.id,
+                      name: site.name,
+                      business: site.business,
+                      variant: site.variant || 'Modern',
+                      hero: site.heroHeadline || `Premium website for ${site.business}`,
+                      tagline: 'Professional, modern, and built for success.',
+                      issues: site.issues || [],
+                      score: site.opportunityScore || 0,
+                      aboutTitle: `About ${site.business}`,
+                      aboutText: `Learn more about ${site.business} and what they offer.`,
+                      servicesTitle: 'Our Services',
+                      services: [{ name: 'Web Design', description: 'Professional web design services' }],
+                      galleryTitle: 'Our Work',
+                      contactTitle: 'Get In Touch',
+                      contactEmail: '',
+                      contactPhone: '',
+                      contactAddress: '',
+                      primaryColor: '#2563eb',
+                      secondaryColor: '#64748b',
+                      accentColor: '#7c3aed',
+                      visibleSections: ['about', 'services', 'gallery', 'contact'],
+                    };
+                    onOpenSiteEditor(generated);
+                  }
+                }}
+                className="flex-1 py-3 border border-zinc-700 text-xs tracking-widest rounded-2xl hover:bg-zinc-800 transition-colors"
+              >
+                EDIT IN VISUAL EDITOR
+              </button>
                 <button
                   onClick={() => handleDeploy(site.id)}
                   disabled={site.status === 'live'}

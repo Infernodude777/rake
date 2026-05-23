@@ -10,8 +10,8 @@ interface CommandItem {
 const COMMANDS: CommandItem[] = [
   { label: 'Search businesses', cmd: 'discover' },
   { label: 'Open leads pipeline', cmd: 'leads' },
-  { label: 'Generate website from last scrape', cmd: 'generate' },
-  { label: 'Deploy latest site', cmd: 'deploy' },
+  { label: 'Generate website from last scrape', cmd: 'discover' },
+  { label: 'Deploy latest site', cmd: 'websites' },
   { label: 'Open settings', cmd: 'settings' },
   { label: 'View analytics', cmd: 'analytics' },
   { label: 'Go to dashboard', cmd: 'dashboard' },

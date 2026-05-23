@@ -3,7 +3,7 @@ import { createRateLimiter } from '../utils/rateLimiter';
 export const GOOGLE_PLACES_API = 'https://maps.googleapis.com/maps/api';
 const GOOGLE_MAPS_JS = 'https://maps.googleapis.com/maps/api/js';
 
-export const rateLimiter = createRateLimiter('Google Places', { rpm: 10, rpd: 100000 });
+export const rateLimiter = createRateLimiter('Google Places', { rpm: 300, rpd: 100000 });
 
 export interface GooglePlace {
   placeId: string;
@@ -248,47 +248,52 @@ export async function findBusinesses(
     maxResults
   );
 
-  // Step 3: Fetch place details for each result (website, phone, etc.)
+  // Step 3: Fetch place details in parallel batches (website, phone, etc.)
   const businesses: FoundBusiness[] = [];
   const seenPlaceIds = new Set<string>();
+  const uniquePlaces = places.filter((p) => p.place_id && !seenPlaceIds.has(p.place_id) && seenPlaceIds.add(p.place_id));
 
-  for (const place of places) {
-    if (!place.place_id || seenPlaceIds.has(place.place_id)) continue;
-    seenPlaceIds.add(place.place_id);
+  const BATCH_SIZE = 5;
+  for (let i = 0; i < uniquePlaces.length; i += BATCH_SIZE) {
+    const batch = uniquePlaces.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map(async (place) => {
+        let details: google.maps.places.PlaceResult | null = null;
+        try {
+          await rateLimiter.acquire();
+          details = await promisifyGetDetails(service, place.place_id!, [
+            'name',
+            'website',
+            'formatted_address',
+            'formatted_phone_number',
+            'international_phone_number',
+            'types',
+            'geometry',
+            'rating',
+            'user_ratings_total',
+          ]);
+        } catch {
+          // If details fail, use nearby search data
+        }
 
-    let details: google.maps.places.PlaceResult | null = null;
-    try {
-      await rateLimiter.acquire();
-      details = await promisifyGetDetails(service, place.place_id, [
-        'name',
-        'website',
-        'formatted_address',
-        'formatted_phone_number',
-        'international_phone_number',
-        'types',
-        'geometry',
-        'rating',
-        'user_ratings_total',
-      ]);
-    } catch {
-      // If details fail, use nearby search data
-    }
-
-    const loc = place.geometry?.location;
-    businesses.push({
-      name: place.name || '',
-      address: details?.formatted_address || place.vicinity || '',
-      phone:
-        details?.international_phone_number ||
-        details?.formatted_phone_number ||
-        null,
-      placeId: place.place_id,
-      types: details?.types || place.types || [],
-      rating: place.rating || 0,
-      userRatingsTotal: place.user_ratings_total || 0,
-      website: details?.website || null,
-      location: loc ? { lat: loc.lat(), lng: loc.lng() } : null,
-    });
+        const loc = place.geometry?.location;
+        return {
+          name: place.name || '',
+          address: details?.formatted_address || place.vicinity || '',
+          phone:
+            details?.international_phone_number ||
+            details?.formatted_phone_number ||
+            null,
+          placeId: place.place_id!,
+          types: details?.types || place.types || [],
+          rating: place.rating || 0,
+          userRatingsTotal: place.user_ratings_total || 0,
+          website: details?.website || null,
+          location: loc ? { lat: loc.lat(), lng: loc.lng() } : null,
+        };
+      })
+    );
+    businesses.push(...batchResults);
   }
 
   return businesses;

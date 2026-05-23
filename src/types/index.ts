@@ -60,8 +60,25 @@ export interface GeneratedSite {
   business: string;
   variant: string;
   hero: string;
+  tagline: string;
   issues: string[];
   score: number;
+  // Extended content
+  aboutTitle: string;
+  aboutText: string;
+  servicesTitle: string;
+  services: { name: string; description: string }[];
+  galleryTitle: string;
+  contactTitle: string;
+  contactEmail: string;
+  contactPhone: string;
+  contactAddress: string;
+  // Theme
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+  // State — which sections are visible
+  visibleSections: string[];
 }
 
 // === Notification Types ===
@@ -129,8 +146,8 @@ export interface RateLimitConfig {
 export type RateLimitPreset = Record<string, RateLimitConfig>;
 
 export const DEFAULT_RATE_LIMITS: RateLimitPreset = {
-  google: { rpm: 10, rpd: 100000 },
-  llm: { rpm: 30, rpd: 5000 },
+  google: { rpm: 300, rpd: 100000 },
+  llm: { rpm: 300, rpd: 5000 },
 };
 
 // === Search History ===
