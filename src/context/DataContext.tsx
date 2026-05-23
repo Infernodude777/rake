@@ -9,6 +9,40 @@ const DEFAULT_NOTIFICATIONS: Notification[] = [
   { id: 1, message: 'Welcome to RAKE! Configure your API keys in Settings.', time: 'now', read: false, createdAt: Date.now() },
 ];
 
+// Demo businesses for testing the website generator without API keys
+const DEMO_BUSINESSES: Business[] = [
+  {
+    id: 9001, name: 'Blue Bottle Coffee', category: 'Coffee Shop',
+    location: 'San Francisco, CA', rating: 4.7, reviews: 1243,
+    website: '', phone: '(415) 555-0142',
+    opportunityScore: 87, seoScore: 45, mobileScore: 30, urgency: 75, closeProbability: 65,
+    issues: ['No dedicated website', 'Weak local search presence', 'Outdated Google listing'],
+    tech: ['Square POS', 'Instagram'],
+    source: 'Demo', createdAt: Date.now(),
+  },
+  {
+    id: 9002, name: 'Atlas Dental Studio', category: 'Dentist',
+    location: 'Austin, TX', rating: 4.9, reviews: 312,
+    website: '', phone: '(512) 555-0187',
+    opportunityScore: 92, seoScore: 35, mobileScore: 20, urgency: 85, closeProbability: 72,
+    issues: ['No website', 'Missing from Google Maps', 'Competitors rank for key terms'],
+    tech: ['Phone bookings only'],
+    source: 'Demo', createdAt: Date.now(),
+  },
+  {
+    id: 9003, name: 'Pinnacle Fitness', category: 'Gym',
+    location: 'Denver, CO', rating: 4.5, reviews: 876,
+    website: '', phone: '(720) 555-0301',
+    opportunityScore: 78, seoScore: 55, mobileScore: 40, urgency: 60, closeProbability: 58,
+    issues: ['Outdated Wix site from 2018', 'Not mobile-friendly', 'Slow page load'],
+    tech: ['Wix', 'Mailchimp'],
+    source: 'Demo', createdAt: Date.now(),
+  },
+];
+
+const DEMO_WEBSITES: Website[] = [];
+const DEMO_LEADS: Lead[] = [];
+
 const STORAGE_KEYS = {
   businesses: 'businesses',
   leads: 'leads',
@@ -59,7 +93,7 @@ const DataContext = createContext<DataContextType | null>(null);
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const [userId, setUserIdState] = useState<string | null>(null);
-  const [businesses, setBusinessesState] = useState<Business[]>([]);
+  const [businesses, setBusinessesState] = useState<Business[]>(DEMO_BUSINESSES);
   const [leads, setLeadsState] = useState<Lead[]>([]);
   const [websites, setWebsitesState] = useState<Website[]>([]);
   const [notifications, setNotificationsState] = useState<Notification[]>(DEFAULT_NOTIFICATIONS);
@@ -68,11 +102,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [siteData, setSiteDataState] = useState<Record<number, GeneratedSite>>({});
   const [settings, setSettingsState] = useState<AppSettings>({ workspaceName: 'My Workspace', userName: 'User', rateLimits: { ...DEFAULT_RATE_LIMITS } });
 
-  // Load data from localStorage when userId changes
+  // Load data from localStorage when userId changes; use demo data when empty
   const loadData = useCallback((uid: string | null) => {
-    setBusinessesState(getData<Business[]>(uid, STORAGE_KEYS.businesses, []));
-    setLeadsState(getData<Lead[]>(uid, STORAGE_KEYS.leads, []));
-    setWebsitesState(getData<Website[]>(uid, STORAGE_KEYS.websites, []));
+    const storedBusinesses = getData<Business[]>(uid, STORAGE_KEYS.businesses, []);
+    setBusinessesState(storedBusinesses.length > 0 ? storedBusinesses : DEMO_BUSINESSES);
+    setLeadsState(getData<Lead[]>(uid, STORAGE_KEYS.leads, DEMO_LEADS));
+    setWebsitesState(getData<Website[]>(uid, STORAGE_KEYS.websites, DEMO_WEBSITES));
     setNotificationsState(getData<Notification[]>(uid, STORAGE_KEYS.notifications, DEFAULT_NOTIFICATIONS));
     setApiKeysState(getData<ApiKeys>(uid, STORAGE_KEYS.apiKeys, DEFAULT_API_KEYS));
     setSettingsState(getData<AppSettings>(uid, STORAGE_KEYS.settings, { workspaceName: 'My Workspace', userName: 'User', rateLimits: { ...DEFAULT_RATE_LIMITS } }));

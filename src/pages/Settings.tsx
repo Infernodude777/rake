@@ -3,7 +3,7 @@ import { useData } from '../context/DataContext';
 import type { ApiKeys } from '../types';
 import { DEFAULT_RATE_LIMITS } from '../types';
 import { Eye, EyeOff, Check, Gauge, ExternalLink, Loader2 } from 'lucide-react';
-import { testGoogleKey, testLlmKey } from '../utils/testApiKeys';
+import { testGoogleKey, testLlmKey, testGeminiKey } from '../utils/testApiKeys';
 import type { TestResult } from '../utils/testApiKeys';
 
 interface KeyField {
@@ -73,6 +73,21 @@ const KEY_FIELDS: KeyField[] = [
       'Paste the key below — free tier gives $200/mo credit (~66k searches)',
     ],
   },
+  {
+    id: 'geminiApiKey',
+    label: 'Gemini API Key (Nano Banana 2 Image Gen)',
+    placeholder: 'AIza...',
+    url: 'https://aistudio.google.com/apikey',
+    urlLabel: 'aistudio.google.com/apikey',
+    steps: [
+      'Go to aistudio.google.com and sign in with your Google account',
+      'Click "Get API Key" or navigate to API Keys section',
+      'Create a new API key for Gemini API',
+      'This powers Nano Banana 2 (Gemini 3.1 Flash Image) — AI image generation for websites',
+      'Free tier: generous daily quota for image generation',
+      'Used to generate hero images, gallery photos, and logos for generated websites',
+    ],
+  },
 ];
 
 export default function Settings() {
@@ -121,6 +136,9 @@ export default function Settings() {
             baseUrl: apiKeys.llmBaseUrl,
             modelId: apiKeys.llmModelId,
           });
+          break;
+        case 'geminiApiKey':
+          result = await testGeminiKey(apiKeys.geminiApiKey);
           break;
         default:
           result = { success: false, message: 'Unknown key type.' };

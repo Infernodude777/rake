@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Monitor, Smartphone, Check, Eye, EyeOff,
-  Palette, Layout, Type, Image,
+  Palette, Layout, Type, Image, Download, Code, Loader2,
 } from 'lucide-react';
 import type { GeneratedSite } from '../types';
 import { useData } from '../context/DataContext';
+import { generateFullWebsiteHTML } from '../services/llm';
 
 interface SiteEditorProps {
   open: boolean;
@@ -162,10 +163,13 @@ function EditableField({
 // ── Main Component ──
 
 export default function SiteEditor({ open, site, onClose, onPublish }: SiteEditorProps) {
-  const { addNotification } = useData();
+  const { addNotification, apiKeys } = useData();
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [activeTab, setActiveTab] = useState<'content' | 'theme' | 'sections'>('content');
   const [copied, setCopied] = useState(false);
+  const [generatingHtml, setGeneratingHtml] = useState(false);
+  const [fullHtml, setFullHtml] = useState<string | null>(null);
+  const [showCode, setShowCode] = useState(false);
 
   // Editable site state
   const [editableSite, setEditableSite] = useState<GeneratedSite | null>(null);
@@ -234,7 +238,58 @@ export default function SiteEditor({ open, site, onClose, onPublish }: SiteEdito
     color: template.accent,
   };
 
-  // ── Copy HTML handler ──
+  // ── Generate & Download Full Website HTML ──
+  const handleGenerateFullHtml = async () => {
+    if (!currentSite) return;
+    setGeneratingHtml(true);
+    try {
+      const html = await generateFullWebsiteHTML(apiKeys, {
+        name: currentSite.business,
+        category: currentSite.name.split('•')[1]?.trim() || 'Business',
+        location: currentSite.contactAddress,
+        hero: currentSite.hero,
+        tagline: currentSite.tagline,
+        aboutTitle: currentSite.aboutTitle,
+        aboutText: currentSite.aboutText,
+        servicesTitle: currentSite.servicesTitle,
+        services: currentSite.services,
+        galleryTitle: currentSite.galleryTitle,
+        contactTitle: currentSite.contactTitle,
+        contactEmail: currentSite.contactEmail,
+        contactPhone: currentSite.contactPhone,
+        contactAddress: currentSite.contactAddress,
+        primaryColor: currentSite.primaryColor,
+        secondaryColor: currentSite.secondaryColor,
+        accentColor: currentSite.accentColor,
+        visibleSections: currentSite.visibleSections,
+        heroImageUrl: currentSite.heroImageUrl,
+        galleryImageUrls: currentSite.galleryImageUrls,
+        metaDescription: currentSite.metaDescription || '',
+        metaKeywords: currentSite.metaKeywords || '',
+        variant: currentSite.variant,
+      });
+      setFullHtml(html);
+      if (html) {
+        // Auto-download
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${currentSite.business.toLowerCase().replace(/[^a-z0-9]/g, '-')}.html`;
+        a.click();
+        URL.revokeObjectURL(url);
+        addNotification('Full website HTML generated & downloaded! 🚀');
+      }
+    } catch (e: any) {
+      addNotification(`HTML generation failed: ${e.message}. Using preview HTML instead.`);
+      // Fallback: copy inner HTML
+      handleCopyHtml();
+    } finally {
+      setGeneratingHtml(false);
+    }
+  };
+
+  // ── Copy HTML handler (fallback / quick copy) ──
   const handleCopyHtml = () => {
     const previewEl = document.getElementById('site-preview-content');
     if (previewEl) {
@@ -265,8 +320,16 @@ export default function SiteEditor({ open, site, onClose, onPublish }: SiteEdito
       }}
     >
       {/* ── Hero Section ── */}
-      <section style={{ ...heroStyle, padding: '80px 40px', textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
-        {template.heroPattern && (
+      <section style={{ ...heroStyle, padding: '80px 40px', textAlign: 'center', position: 'relative', overflow: 'hidden', minHeight: 400 }}>
+        {currentSite.heroImageUrl && (
+          <div style={{
+            position: 'absolute', inset: 0,
+            backgroundImage: `url(${currentSite.heroImageUrl})`,
+            backgroundSize: 'cover', backgroundPosition: 'center',
+            opacity: 0.35,
+          }} />
+        )}
+        {template.heroPattern && !currentSite.heroImageUrl && (
           <div style={{ position: 'absolute', inset: 0, backgroundImage: template.heroPattern, opacity: 0.5 }} />
         )}
         <div style={{ position: 'relative', zIndex: 1 }}>
@@ -344,23 +407,33 @@ export default function SiteEditor({ open, site, onClose, onPublish }: SiteEdito
             style={{ fontWeight: template.headingWeight, marginBottom: 40, ...accentStyle }}
           />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-            {[1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                style={{
-                  ...cardStyle,
-                  aspectRatio: '4/3',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 12,
-                  opacity: 0.5,
-                  color: template.accent,
-                }}
-              >
-                <Image size={24} />
-              </div>
-            ))}
+            {(currentSite.galleryImageUrls && currentSite.galleryImageUrls.length > 0
+              ? currentSite.galleryImageUrls
+              : [1, 2, 3, 4]
+            ).map((item, i) => {
+              const isImageUrl = typeof item === 'string' && item.startsWith('data:');
+              return (
+                <div
+                  key={i}
+                  style={{
+                    ...cardStyle,
+                    aspectRatio: '4/3',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 12,
+                    opacity: isImageUrl ? 1 : 0.5,
+                    color: template.accent,
+                    overflow: 'hidden',
+                    backgroundImage: isImageUrl ? `url(${item})` : undefined,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                  }}
+                >
+                  {!isImageUrl && <Image size={24} />}
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
@@ -436,12 +509,31 @@ export default function SiteEditor({ open, site, onClose, onPublish }: SiteEdito
                   {previewMode === 'desktop' ? <Smartphone size={15} /> : <Monitor size={15} />}
                 </button>
                 <button
+                  onClick={() => setShowCode(!showCode)}
+                  className={`px-3 py-2 rounded-xl text-[10px] transition-colors ${
+                    showCode ? 'bg-blue-500/20 text-blue-400' : 'bg-zinc-900 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <Code size={14} />
+                </button>
+                <button
                   onClick={handleCopyHtml}
                   className={`px-3 py-2 rounded-xl text-[10px] transition-colors ${
                     copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-900 text-zinc-400 hover:text-white'
                   }`}
                 >
                   {copied ? 'Copied!' : 'Copy HTML'}
+                </button>
+                <button
+                  onClick={handleGenerateFullHtml}
+                  disabled={generatingHtml}
+                  className="px-4 py-2 rounded-xl bg-white/10 text-white text-[11px] font-medium hover:bg-white/20 transition-colors disabled:opacity-50 flex items-center gap-2"
+                >
+                  {generatingHtml ? (
+                    <><Loader2 size={13} className="animate-spin" /> Generating...</>
+                  ) : (
+                    <><Download size={13} /> Download Full Site</>
+                  )}
                 </button>
                 <button
                   onClick={onClose}
@@ -460,17 +552,23 @@ export default function SiteEditor({ open, site, onClose, onPublish }: SiteEdito
 
             {/* ── Main Content ── */}
             <div className="flex flex-1 overflow-hidden">
-              {/* Preview panel */}
+              {/* Preview / Code panel */}
               <div className="flex-1 overflow-y-auto bg-zinc-900/50 p-6">
-                <div
-                  style={{
-                    borderRadius: 12,
-                    overflow: 'hidden',
-                    boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-                  }}
-                >
-                  {renderPreview()}
-                </div>
+                {showCode && fullHtml ? (
+                  <pre className="text-xs text-zinc-400 whitespace-pre-wrap font-mono bg-zinc-950 p-6 rounded-xl border border-zinc-800 max-h-full overflow-auto">
+                    {fullHtml}
+                  </pre>
+                ) : (
+                  <div
+                    style={{
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                      boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+                    }}
+                  >
+                    {renderPreview()}
+                  </div>
+                )}
               </div>
 
               {/* Right panel */}

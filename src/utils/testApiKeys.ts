@@ -53,3 +53,32 @@ export async function testLlmKey(keys: { apiKey: string; baseUrl: string; modelI
     return { success: false, message: `Connection failed: ${err instanceof Error ? err.message : 'Unknown error'}` };
   }
 }
+
+/** Test a Gemini API key using the models.list endpoint. */
+export async function testGeminiKey(apiKey: string): Promise<TestResult> {
+  if (!apiKey) return { success: false, message: 'No API key entered.' };
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
+    );
+    const data = await res.json();
+    if (data.models) {
+      const imageModel = data.models.find((m: any) =>
+        m.name?.includes('gemini-2.0-flash') || m.name?.includes('imagen')
+      );
+      const modelNote = imageModel
+        ? ` Found Nano Banana 2 (${imageModel.name.split('/').pop()}).`
+        : '';
+      return { success: true, message: `Connected! Gemini API key is valid.${modelNote}` };
+    }
+    if (data.error) {
+      if (data.error.code === 401 || data.error.status === 'UNAUTHENTICATED') {
+        return { success: false, message: 'Invalid API key.' };
+      }
+      return { success: false, message: `Gemini API error: ${data.error.message || data.error.status}` };
+    }
+    return { success: false, message: 'Unexpected response from Gemini API.' };
+  } catch (err) {
+    return { success: false, message: `Connection failed: ${err instanceof Error ? err.message : 'Unknown error'}` };
+  }
+}

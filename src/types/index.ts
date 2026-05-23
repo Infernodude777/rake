@@ -79,6 +79,16 @@ export interface GeneratedSite {
   accentColor: string;
   // State — which sections are visible
   visibleSections: string[];
+  // AI-generated images (Nano Banana 2 / Gemini Flash Image)
+  heroImageUrl?: string;
+  galleryImageUrls?: string[];
+  logoPrompt?: string;
+  // SEO & meta
+  metaDescription?: string;
+  metaKeywords?: string;
+  faviconPrompt?: string;
+  // Full generated HTML (standalone deployable file)
+  fullHtml?: string;
 }
 
 // === Notification Types ===
@@ -98,6 +108,7 @@ export interface ApiKeys {
   llmModelId: string;
   llmApiKey: string;
   googleMapsApiKey: string;
+  geminiApiKey: string;
 }
 
 export const DEFAULT_API_KEYS: ApiKeys = {
@@ -105,6 +116,7 @@ export const DEFAULT_API_KEYS: ApiKeys = {
   llmModelId: 'gpt-4o',
   llmApiKey: '',
   googleMapsApiKey: '',
+  geminiApiKey: '',
 };
 
 // === Dashboard Types ===
@@ -148,6 +160,7 @@ export type RateLimitPreset = Record<string, RateLimitConfig>;
 export const DEFAULT_RATE_LIMITS: RateLimitPreset = {
   google: { rpm: 300, rpd: 100000 },
   llm: { rpm: 300, rpd: 5000 },
+  gemini: { rpm: 100, rpd: 1500 },
 };
 
 // === Search History ===
