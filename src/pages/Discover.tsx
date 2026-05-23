@@ -1,14 +1,41 @@
-import { useState, useEffect } from 'react';
-import { Search } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Search, Globe, MapPin, Building2, Compass, Zap, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { searchBusinesses as firecrawlSearch, rateLimiter as firecrawlLimiter } from '../services/firecrawl';
-import { searchPlaces as googleSearch, rateLimiter as googleLimiter } from '../services/google';
+import { findBusinesses, rateLimiter as googleLimiter } from '../services/google';
 import { searchPlaces as foursquareSearch, rateLimiter as foursquareLimiter } from '../services/foursquare';
 import { searchPlaces as hereSearch, rateLimiter as hereLimiter } from '../services/here';
 import { scoreOpportunity, rateLimiter as llmLimiter } from '../services/llm';
 import { RateLimitError } from '../utils/rateLimiter';
 import BusinessCard from '../components/BusinessCard';
+import ErrorBoundary from '../components/ErrorBoundary';
 import type { Business } from '../types';
+
+interface ServiceStatus {
+  id: string;
+  name: string;
+  icon: typeof MapPin;
+  status: 'idle' | 'loading' | 'success' | 'error' | 'rate-limited' | 'skipped';
+  message?: string;
+  resultCount?: number;
+}
+
+const SERVICE_META = [
+  { id: 'google', name: 'Google Maps', icon: MapPin },
+  { id: 'foursquare', name: 'Foursquare', icon: Building2 },
+  { id: 'here', name: 'HERE', icon: Compass },
+  { id: 'firecrawl', name: 'Firecrawl', icon: Globe },
+  { id: 'llm', name: 'AI Enrichment', icon: Zap },
+] as const;
+
+function createServiceStatuses(): ServiceStatus[] {
+  return SERVICE_META.map((s) => ({
+    id: s.id,
+    name: s.name,
+    icon: s.icon,
+    status: 'idle' as const,
+  }));
+}
 
 interface DiscoverProps {
   onNavigate: (page: string) => void;
@@ -20,6 +47,13 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
   const [query, setQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [serviceStatuses, setServiceStatuses] = useState<ServiceStatus[]>(createServiceStatuses);
+
+  const updateStatus = useCallback((id: string, updates: Partial<ServiceStatus>) => {
+    setServiceStatuses((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, ...updates } : s))
+    );
+  }, []);
 
   // Sync rate limiter configs from user settings
   useEffect(() => {
@@ -36,6 +70,7 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
     if (!query.trim()) return;
     setIsSearching(true);
     setSearchError('');
+    setServiceStatuses(createServiceStatuses());
 
     try {
       const results: Business[] = [];
@@ -46,20 +81,30 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
       const term = parts[0] || queryLower;
       const location = parts[1] || '';
 
-      // Try Google Places
+      // Try Google Places (enhanced with geocoding + paginated nearby search)
       if (apiKeys.googleMapsApiKey) {
+        updateStatus('google', { status: 'loading', message: location ? `Geocoding ${location}...` : 'Searching...' });
         try {
-          const places = await googleSearch(apiKeys.googleMapsApiKey, query);
-          places.forEach((p) => {
-            if (!results.some((r) => r.name === p.name)) {
+          const searchLocation = location || term;
+          const searchKeyword = location ? term : '';
+          const found = await findBusinesses({
+            keyword: searchKeyword,
+            location: searchLocation,
+            radiusMeters: 5000,
+            maxResults: 20,
+            apiKey: apiKeys.googleMapsApiKey,
+          });
+          found.forEach((b) => {
+            if (!results.some((r) => r.name === b.name)) {
               results.push({
                 id: Date.now() + results.length + 1000,
-                name: p.name,
-                category: p.types[0] || term,
-                location: p.formattedAddress,
-                rating: p.rating,
-                reviews: p.userRatingsTotal,
-                website: p.website || '',
+                name: b.name,
+                category: b.types[0] || term,
+                location: b.address,
+                rating: b.rating,
+                reviews: b.userRatingsTotal,
+                website: b.website || '',
+                phone: b.phone || undefined,
                 opportunityScore: 0,
                 seoScore: 0,
                 mobileScore: 0,
@@ -68,22 +113,28 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
                 issues: [],
                 tech: [],
                 source: 'Google Maps',
-                googlePlaceId: p.placeId,
+                googlePlaceId: b.placeId,
                 createdAt: Date.now(),
               });
             }
           });
+          updateStatus('google', { status: 'success', resultCount: found.length });
         } catch (e: any) {
           if (e instanceof RateLimitError) {
+            updateStatus('google', { status: 'rate-limited', message: `Resets in ${Math.ceil(e.retryAfterMs / 60000)} min` });
             addNotification(`⏳ Google Places rate limited — resets in ${Math.ceil(e.retryAfterMs / 60000)} min`);
           } else {
+            updateStatus('google', { status: 'error', message: e?.message || 'Request failed' });
             console.warn('Google Places search failed:', e);
           }
         }
+      } else {
+        updateStatus('google', { status: 'skipped', message: 'No API key' });
       }
 
       // Try Foursquare
       if (apiKeys.foursquareApiKey) {
+        updateStatus('foursquare', { status: 'loading' });
         try {
           const places = await foursquareSearch(apiKeys.foursquareApiKey, query);
           places.forEach((p) => {
@@ -108,17 +159,23 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
               });
             }
           });
+          updateStatus('foursquare', { status: 'success', resultCount: places.length });
         } catch (e: any) {
           if (e instanceof RateLimitError) {
+            updateStatus('foursquare', { status: 'rate-limited', message: `Resets in ${Math.ceil(e.retryAfterMs / 60000)} min` });
             addNotification(`⏳ Foursquare rate limited — resets in ${Math.ceil(e.retryAfterMs / 60000)} min`);
           } else {
+            updateStatus('foursquare', { status: 'error', message: e?.message || 'Request failed' });
             console.warn('Foursquare search failed:', e);
           }
         }
+      } else {
+        updateStatus('foursquare', { status: 'skipped', message: 'No API key' });
       }
 
       // Try HERE
       if (apiKeys.hereApiKey) {
+        updateStatus('here', { status: 'loading' });
         try {
           const places = await hereSearch(apiKeys.hereApiKey, query);
           places.forEach((p) => {
@@ -143,17 +200,23 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
               });
             }
           });
+          updateStatus('here', { status: 'success', resultCount: places.length });
         } catch (e: any) {
           if (e instanceof RateLimitError) {
+            updateStatus('here', { status: 'rate-limited', message: `Resets in ${Math.ceil(e.retryAfterMs / 60000)} min` });
             addNotification(`⏳ HERE rate limited — resets in ${Math.ceil(e.retryAfterMs / 60000)} min`);
           } else {
+            updateStatus('here', { status: 'error', message: e?.message || 'Request failed' });
             console.warn('HERE search failed:', e);
           }
         }
+      } else {
+        updateStatus('here', { status: 'skipped', message: 'No API key' });
       }
 
       // Try Firecrawl
       if (apiKeys.firecrawlApiKey) {
+        updateStatus('firecrawl', { status: 'loading' });
         try {
           const scraped = await firecrawlSearch(apiKeys.firecrawlApiKey, query);
           scraped.forEach((s) => {
@@ -178,13 +241,18 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
               });
             }
           });
+          updateStatus('firecrawl', { status: 'success', resultCount: scraped.length });
         } catch (e: any) {
           if (e instanceof RateLimitError) {
+            updateStatus('firecrawl', { status: 'rate-limited', message: `Resets in ${Math.ceil(e.retryAfterMs / 60000)} min` });
             addNotification(`⏳ Firecrawl rate limited — resets in ${Math.ceil(e.retryAfterMs / 60000)} min`);
           } else {
+            updateStatus('firecrawl', { status: 'error', message: e?.message || 'Request failed' });
             console.warn('Firecrawl search failed:', e);
           }
         }
+      } else {
+        updateStatus('firecrawl', { status: 'skipped', message: 'No API key' });
       }
 
       if (results.length === 0) {
@@ -194,7 +262,9 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
       }
 
       // Score each business using LLM
-      if (apiKeys.llmApiKey) {
+      if (apiKeys.llmApiKey && results.length > 0) {
+        updateStatus('llm', { status: 'loading', message: `Scoring ${results.length} businesses...` });
+        let scoredCount = 0;
         for (const biz of results) {
           try {
             const scores = await scoreOpportunity(apiKeys, {
@@ -214,9 +284,14 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
             if (scores.summary) {
               biz.issues = biz.issues.length > 0 ? biz.issues : [scores.summary];
             }
+            scoredCount++;
+            updateStatus('llm', { message: `Scored ${scoredCount}/${results.length}...` });
           } catch (e: any) {
             if (e instanceof RateLimitError) {
+              updateStatus('llm', { status: 'rate-limited', message: `Rate limited — resets in ${Math.ceil(e.retryAfterMs / 60000)} min` });
               addNotification(`⏳ LLM rate limited — scoring ${biz.name} skipped (resets in ${Math.ceil(e.retryAfterMs / 60000)} min)`);
+            } else {
+              updateStatus('llm', { message: `Scored ${scoredCount}/${results.length} (1 error)` });
             }
             // Fallback scores
             biz.opportunityScore = Math.floor(Math.random() * 30) + 60;
@@ -226,7 +301,11 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
             biz.closeProbability = Math.floor(Math.random() * 30) + 50;
           }
         }
+        updateStatus('llm', { status: 'success', message: `${scoredCount} businesses scored` });
+      } else if (apiKeys.llmApiKey && results.length === 0) {
+        updateStatus('llm', { status: 'skipped', message: 'No results to score' });
       } else {
+        updateStatus('llm', { status: 'skipped', message: 'No API key — random scores' });
         // No LLM key — generate random scores
         results.forEach((biz) => {
           biz.opportunityScore = Math.floor(Math.random() * 30) + 60;
@@ -351,16 +430,75 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
         </div>
       )}
 
+      {/* Search progress panel — shows live status of each API service */}
+      {isSearching && (
+        <div className="mt-6 bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden">
+          <div className="px-5 py-3 border-b border-zinc-800 flex items-center gap-2">
+            <Loader2 size={14} className="animate-spin text-zinc-400" />
+            <span className="text-xs font-medium text-zinc-300">Searching...</span>
+          </div>
+          <div className="p-3 space-y-1">
+            {serviceStatuses.map((svc) => {
+              const SvgIcon = svc.icon;
+              const statusIcon =
+                svc.status === 'loading' ? (
+                  <div className="w-3 h-3 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
+                ) : svc.status === 'success' ? (
+                  <CheckCircle2 size={13} className="text-emerald-400" />
+                ) : svc.status === 'error' ? (
+                  <XCircle size={13} className="text-red-400" />
+                ) : svc.status === 'rate-limited' ? (
+                  <Clock size={13} className="text-amber-400" />
+                ) : svc.status === 'skipped' ? (
+                  <div className="w-3 h-3 rounded-full border border-dashed border-zinc-600" />
+                ) : (
+                  <div className="w-3 h-3 rounded-full bg-zinc-800" />
+                );
+
+              const statusColor =
+                svc.status === 'loading'
+                  ? 'text-zinc-200'
+                  : svc.status === 'success'
+                    ? 'text-emerald-400'
+                    : svc.status === 'error'
+                      ? 'text-red-400'
+                      : svc.status === 'rate-limited'
+                        ? 'text-amber-400'
+                        : 'text-zinc-500';
+
+              return (
+                <div key={svc.id} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-zinc-950/50">
+                  <SvgIcon size={14} className="text-zinc-500 shrink-0" />
+                  <span className="text-xs text-zinc-400 flex-1">{svc.name}</span>
+                  <div className="flex items-center gap-2">
+                    {svc.resultCount !== undefined && svc.status === 'success' && (
+                      <span className="text-[10px] text-zinc-500">{svc.resultCount} results</span>
+                    )}
+                    {svc.message && svc.status !== 'idle' && (
+                      <span className={`text-[10px] ${statusColor}`}>{svc.message}</span>
+                    )}
+                    {statusIcon}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Results list wrapped in error boundary */}
       {businesses.length > 0 && (
         <div className="mt-8 space-y-4">
-          {businesses.map((biz) => (
-            <BusinessCard
-              key={biz.id}
-              business={biz}
-              onAnalyze={analyzeBusiness}
-              onGenerate={generateWebsite}
-            />
-          ))}
+          <ErrorBoundary>
+            {businesses.map((biz) => (
+              <BusinessCard
+                key={biz.id}
+                business={biz}
+                onAnalyze={analyzeBusiness}
+                onGenerate={generateWebsite}
+              />
+            ))}
+          </ErrorBoundary>
         </div>
       )}
     </div>

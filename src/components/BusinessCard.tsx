@@ -1,4 +1,4 @@
-import { BarChart3, Rocket } from 'lucide-react';
+import { BarChart3, Rocket, Phone } from 'lucide-react';
 import type { Business } from '../types';
 
 interface BusinessCardProps {
@@ -30,8 +30,21 @@ export default function BusinessCard({ business: biz, onAnalyze, onGenerate }: B
             </div>
           )}
         </div>
-        <div className="text-sm text-zinc-400 mt-px">
-          {biz.location} • {biz.rating}★ ({biz.reviews} reviews)
+        <div className="text-sm text-zinc-400 mt-px flex items-center gap-2 flex-wrap">
+          <span>{biz.location}</span>
+          <span className="text-zinc-600">•</span>
+          <span>{biz.rating}★ ({biz.reviews} reviews)</span>
+          {biz.phone && (
+            <>
+              <span className="text-zinc-600">•</span>
+              <span className="flex items-center gap-1">
+                <Phone size={11} className="text-zinc-500" />
+                <a href={`tel:${biz.phone}`} className="hover:text-zinc-200 transition-colors">
+                  {biz.phone}
+                </a>
+              </span>
+            </>
+          )}
         </div>
 
         <div className="mt-6 grid grid-cols-5 gap-px text-center text-xs">

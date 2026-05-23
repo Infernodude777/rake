@@ -8,6 +8,7 @@ export interface Business {
   rating: number;
   reviews: number;
   website: string;
+  phone?: string;
   opportunityScore: number;
   seoScore: number;
   mobileScore: number;
