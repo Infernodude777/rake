@@ -17,7 +17,6 @@ export interface Business {
   issues: string[];
   tech: string[];
   source?: string;
-  yelpUrl?: string;
   googlePlaceId?: string;
   createdAt: number;
 }
@@ -81,20 +80,14 @@ export interface ApiKeys {
   llmBaseUrl: string;
   llmModelId: string;
   llmApiKey: string;
-  firecrawlApiKey: string;
   googleMapsApiKey: string;
-  foursquareApiKey: string;
-  hereApiKey: string;
 }
 
 export const DEFAULT_API_KEYS: ApiKeys = {
   llmBaseUrl: 'https://api.openai.com/v1',
   llmModelId: 'gpt-4o',
   llmApiKey: '',
-  firecrawlApiKey: '',
   googleMapsApiKey: '',
-  foursquareApiKey: '',
-  hereApiKey: '',
 };
 
 // === Dashboard Types ===
@@ -137,9 +130,6 @@ export type RateLimitPreset = Record<string, RateLimitConfig>;
 
 export const DEFAULT_RATE_LIMITS: RateLimitPreset = {
   google: { rpm: 10, rpd: 100000 },
-  foursquare: { rpm: 10, rpd: 5000 },
-  here: { rpm: 20, rpd: 100000 },
-  firecrawl: { rpm: 3, rpd: 490 },
   llm: { rpm: 30, rpd: 5000 },
 };
 

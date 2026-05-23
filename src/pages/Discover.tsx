@@ -1,10 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Globe, MapPin, Building2, Compass, Zap, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react';
+import { Search, MapPin, Zap, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react';
 import { useData } from '../context/DataContext';
-import { searchBusinesses as firecrawlSearch, rateLimiter as firecrawlLimiter } from '../services/firecrawl';
-import { findBusinesses, rateLimiter as googleLimiter } from '../services/google';
-import { searchPlaces as foursquareSearch, rateLimiter as foursquareLimiter } from '../services/foursquare';
-import { searchPlaces as hereSearch, rateLimiter as hereLimiter } from '../services/here';
+import { findBusinesses, searchPlaces, rateLimiter as googleLimiter } from '../services/google';
 import { scoreOpportunity, rateLimiter as llmLimiter } from '../services/llm';
 import { RateLimitError } from '../utils/rateLimiter';
 import BusinessCard from '../components/BusinessCard';
@@ -22,9 +19,6 @@ interface ServiceStatus {
 
 const SERVICE_META = [
   { id: 'google', name: 'Google Maps', icon: MapPin },
-  { id: 'foursquare', name: 'Foursquare', icon: Building2 },
-  { id: 'here', name: 'HERE', icon: Compass },
-  { id: 'firecrawl', name: 'Firecrawl', icon: Globe },
   { id: 'llm', name: 'AI Enrichment', icon: Zap },
 ] as const;
 
@@ -59,9 +53,6 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
   useEffect(() => {
     if (settings.rateLimits) {
       googleLimiter.updateConfig(settings.rateLimits.google);
-      foursquareLimiter.updateConfig(settings.rateLimits.foursquare);
-      hereLimiter.updateConfig(settings.rateLimits.here);
-      firecrawlLimiter.updateConfig(settings.rateLimits.firecrawl);
       llmLimiter.updateConfig(settings.rateLimits.llm);
     }
   }, [settings.rateLimits]);
@@ -74,35 +65,50 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
 
     try {
       const results: Business[] = [];
-      const queryLower = query.toLowerCase();
+      const queryLower = query.trim();
 
       // Parse query: "dentists in miami" → term: "dentists", location: "miami"
       const parts = queryLower.split(/\s+in\s+/);
       const term = parts[0] || queryLower;
       const location = parts[1] || '';
 
-      // Try Google Places (enhanced with geocoding + paginated nearby search)
+      // ── Google Places Search ──
       if (apiKeys.googleMapsApiKey) {
-        updateStatus('google', { status: 'loading', message: location ? `Geocoding ${location}...` : 'Searching...' });
+        updateStatus('google', { status: 'loading', message: 'Searching...' });
         try {
-          const searchLocation = location || term;
-          const searchKeyword = location ? term : '';
-          const found = await findBusinesses({
-            keyword: searchKeyword,
-            location: searchLocation,
-            radiusMeters: 5000,
-            maxResults: 20,
-            apiKey: apiKeys.googleMapsApiKey,
-          });
-          found.forEach((b) => {
+          let found;
+
+          if (location) {
+            // Query has "in <location>" → try geocoding + nearby search first
+            updateStatus('google', { message: `Geocoding "${location}"...` });
+            try {
+              found = await findBusinesses({
+                keyword: term,
+                location,
+                radiusMeters: 5000,
+                maxResults: 20,
+                apiKey: apiKeys.googleMapsApiKey,
+              });
+            } catch {
+              // Geocoding failed (e.g., Geocoding API not enabled) — fall back to text search
+              updateStatus('google', { message: 'Geocoding unavailable, using text search...' });
+              found = await searchPlaces(apiKeys.googleMapsApiKey, queryLower);
+            }
+          } else {
+            // No location in query — use text search directly
+            updateStatus('google', { message: 'Searching Google Places...' });
+            found = await searchPlaces(apiKeys.googleMapsApiKey, queryLower);
+          }
+
+          found.forEach((b: any) => {
             if (!results.some((r) => r.name === b.name)) {
               results.push({
                 id: Date.now() + results.length + 1000,
                 name: b.name,
-                category: b.types[0] || term,
-                location: b.address,
-                rating: b.rating,
-                reviews: b.userRatingsTotal,
+                category: (b.types && b.types[0]) || term,
+                location: b.formattedAddress || b.address || location || term,
+                rating: b.rating || 0,
+                reviews: b.userRatingsTotal || 0,
                 website: b.website || '',
                 phone: b.phone || undefined,
                 opportunityScore: 0,
@@ -113,7 +119,7 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
                 issues: [],
                 tech: [],
                 source: 'Google Maps',
-                googlePlaceId: b.placeId,
+                googlePlaceId: b.placeId || b.place_id,
                 createdAt: Date.now(),
               });
             }
@@ -124,135 +130,13 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
             updateStatus('google', { status: 'rate-limited', message: `Resets in ${Math.ceil(e.retryAfterMs / 60000)} min` });
             addNotification(`⏳ Google Places rate limited — resets in ${Math.ceil(e.retryAfterMs / 60000)} min`);
           } else {
-            updateStatus('google', { status: 'error', message: e?.message || 'Request failed' });
-            console.warn('Google Places search failed:', e);
+            const msg = e?.message || 'Request failed';
+            updateStatus('google', { status: 'error', message: msg });
+            addNotification(`Google search failed: ${msg}`);
           }
         }
       } else {
         updateStatus('google', { status: 'skipped', message: 'No API key' });
-      }
-
-      // Try Foursquare
-      if (apiKeys.foursquareApiKey) {
-        updateStatus('foursquare', { status: 'loading' });
-        try {
-          const places = await foursquareSearch(apiKeys.foursquareApiKey, query);
-          places.forEach((p) => {
-            if (!results.some((r) => r.name === p.name)) {
-              results.push({
-                id: Date.now() + results.length + 3000,
-                name: p.name,
-                category: p.categories[0] || term,
-                location: p.formattedAddress,
-                rating: p.rating,
-                reviews: 0,
-                website: p.website || '',
-                opportunityScore: 0,
-                seoScore: 0,
-                mobileScore: 0,
-                urgency: 0,
-                closeProbability: 0,
-                issues: [],
-                tech: [],
-                source: 'Foursquare',
-                createdAt: Date.now(),
-              });
-            }
-          });
-          updateStatus('foursquare', { status: 'success', resultCount: places.length });
-        } catch (e: any) {
-          if (e instanceof RateLimitError) {
-            updateStatus('foursquare', { status: 'rate-limited', message: `Resets in ${Math.ceil(e.retryAfterMs / 60000)} min` });
-            addNotification(`⏳ Foursquare rate limited — resets in ${Math.ceil(e.retryAfterMs / 60000)} min`);
-          } else {
-            updateStatus('foursquare', { status: 'error', message: e?.message || 'Request failed' });
-            console.warn('Foursquare search failed:', e);
-          }
-        }
-      } else {
-        updateStatus('foursquare', { status: 'skipped', message: 'No API key' });
-      }
-
-      // Try HERE
-      if (apiKeys.hereApiKey) {
-        updateStatus('here', { status: 'loading' });
-        try {
-          const places = await hereSearch(apiKeys.hereApiKey, query);
-          places.forEach((p) => {
-            if (!results.some((r) => r.name === p.name)) {
-              results.push({
-                id: Date.now() + results.length + 4000,
-                name: p.name,
-                category: p.categories[0] || term,
-                location: p.formattedAddress,
-                rating: 0,
-                reviews: 0,
-                website: p.website || '',
-                opportunityScore: 0,
-                seoScore: 0,
-                mobileScore: 0,
-                urgency: 0,
-                closeProbability: 0,
-                issues: [],
-                tech: [],
-                source: 'HERE',
-                createdAt: Date.now(),
-              });
-            }
-          });
-          updateStatus('here', { status: 'success', resultCount: places.length });
-        } catch (e: any) {
-          if (e instanceof RateLimitError) {
-            updateStatus('here', { status: 'rate-limited', message: `Resets in ${Math.ceil(e.retryAfterMs / 60000)} min` });
-            addNotification(`⏳ HERE rate limited — resets in ${Math.ceil(e.retryAfterMs / 60000)} min`);
-          } else {
-            updateStatus('here', { status: 'error', message: e?.message || 'Request failed' });
-            console.warn('HERE search failed:', e);
-          }
-        }
-      } else {
-        updateStatus('here', { status: 'skipped', message: 'No API key' });
-      }
-
-      // Try Firecrawl
-      if (apiKeys.firecrawlApiKey) {
-        updateStatus('firecrawl', { status: 'loading' });
-        try {
-          const scraped = await firecrawlSearch(apiKeys.firecrawlApiKey, query);
-          scraped.forEach((s) => {
-            if (!results.some((r) => r.name.toLowerCase() === s.name.toLowerCase())) {
-              results.push({
-                id: Date.now() + results.length + 2000,
-                name: s.name,
-                category: term,
-                location: location || 'Unknown',
-                rating: 0,
-                reviews: 0,
-                website: s.website,
-                opportunityScore: 0,
-                seoScore: 0,
-                mobileScore: 0,
-                urgency: 0,
-                closeProbability: 0,
-                issues: s.issues,
-                tech: s.tech,
-                source: 'Firecrawl',
-                createdAt: Date.now(),
-              });
-            }
-          });
-          updateStatus('firecrawl', { status: 'success', resultCount: scraped.length });
-        } catch (e: any) {
-          if (e instanceof RateLimitError) {
-            updateStatus('firecrawl', { status: 'rate-limited', message: `Resets in ${Math.ceil(e.retryAfterMs / 60000)} min` });
-            addNotification(`⏳ Firecrawl rate limited — resets in ${Math.ceil(e.retryAfterMs / 60000)} min`);
-          } else {
-            updateStatus('firecrawl', { status: 'error', message: e?.message || 'Request failed' });
-            console.warn('Firecrawl search failed:', e);
-          }
-        }
-      } else {
-        updateStatus('firecrawl', { status: 'skipped', message: 'No API key' });
       }
 
       if (results.length === 0) {
@@ -276,11 +160,11 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
               issues: biz.issues,
               tech: biz.tech,
             });
-            biz.opportunityScore = scores.opportunityScore;
-            biz.seoScore = scores.seoScore;
-            biz.mobileScore = scores.mobileScore;
-            biz.urgency = scores.urgency;
-            biz.closeProbability = scores.closeProbability;
+            biz.opportunityScore = scores.opportunityScore ?? 50;
+            biz.seoScore = scores.seoScore ?? 50;
+            biz.mobileScore = scores.mobileScore ?? 50;
+            biz.urgency = scores.urgency ?? 50;
+            biz.closeProbability = scores.closeProbability ?? 50;
             if (scores.summary) {
               biz.issues = biz.issues.length > 0 ? biz.issues : [scores.summary];
             }
@@ -370,7 +254,7 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
     onNavigate('websites');
   };
 
-  const hasAnyKey = apiKeys.googleMapsApiKey || apiKeys.foursquareApiKey || apiKeys.hereApiKey || apiKeys.firecrawlApiKey || apiKeys.llmApiKey;
+  const hasAnyKey = apiKeys.googleMapsApiKey || apiKeys.llmApiKey;
 
   return (
     <div className="p-8 max-w-6xl mx-auto">

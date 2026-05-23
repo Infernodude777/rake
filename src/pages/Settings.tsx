@@ -3,7 +3,7 @@ import { useData } from '../context/DataContext';
 import type { ApiKeys } from '../types';
 import { DEFAULT_RATE_LIMITS } from '../types';
 import { Eye, EyeOff, Check, Gauge, ExternalLink, Loader2 } from 'lucide-react';
-import { testGoogleKey, testFirecrawlKey, testLlmKey, testFoursquareKey, testHereKey } from '../utils/testApiKeys';
+import { testGoogleKey, testLlmKey } from '../utils/testApiKeys';
 import type { TestResult } from '../utils/testApiKeys';
 
 interface KeyField {
@@ -68,50 +68,8 @@ const KEY_FIELDS: KeyField[] = [
       'Go to "APIs & Services" → "Library"',
       'Search for "Places API" and click "Enable"',
       'Go to "Credentials" → "Create Credentials" → "API Key"',
-      'Optional: Restrict the key to Places API only (recommended)',
+      'Optional: Restrict the key to Places API + Geocoding API (recommended)',
       'Paste it below — free tier gives $200/mo credit (~66k searches)',
-    ],
-  },
-  {
-    id: 'firecrawlApiKey',
-    label: 'Firecrawl API Key',
-    placeholder: 'fc-...',
-    url: 'https://www.firecrawl.dev',
-    urlLabel: 'firecrawl.dev',
-    steps: [
-      'Go to firecrawl.dev and sign up for an account',
-      'Choose the Starter plan ($19/mo) or free trial',
-      'Go to your dashboard → API Keys section',
-      'Copy your API key (starts with fc-...)',
-      'Paste it below — used to crawl business websites for SEO/tech analysis',
-    ],
-  },
-  {
-    id: 'foursquareApiKey',
-    label: 'Foursquare API Key',
-    placeholder: 'fsq-...',
-    url: 'https://developer.foursquare.com',
-    urlLabel: 'developer.foursquare.com',
-    steps: [
-      'Go to developer.foursquare.com and sign up / sign in',
-      'Create a new app / project in the developer dashboard',
-      'Navigate to "API Keys" and generate a new key',
-      'Copy your API key and paste it below',
-      'Free tier available — provides name, address, categories, rating, photos',
-    ],
-  },
-  {
-    id: 'hereApiKey',
-    label: 'HERE API Key',
-    placeholder: 'your-here-api-key',
-    url: 'https://developer.here.com',
-    urlLabel: 'developer.here.com',
-    steps: [
-      'Go to developer.here.com and create a free account',
-      'Go to "My Projects" and create a new project',
-      'Go to "Credentials" → "API Keys" → generate a new key',
-      'Copy the API key and paste it below',
-      'Freemium plan: 250,000 free transactions/month — name, address, phone, website, categories',
     ],
   },
 ];
@@ -155,15 +113,6 @@ export default function Settings() {
       switch (fieldId) {
         case 'googleMapsApiKey':
           result = await testGoogleKey(apiKeys.googleMapsApiKey);
-          break;
-        case 'firecrawlApiKey':
-          result = await testFirecrawlKey(apiKeys.firecrawlApiKey);
-          break;
-        case 'foursquareApiKey':
-          result = await testFoursquareKey(apiKeys.foursquareApiKey);
-          break;
-        case 'hereApiKey':
-          result = await testHereKey(apiKeys.hereApiKey);
           break;
         case 'llmApiKey':
           result = await testLlmKey({
