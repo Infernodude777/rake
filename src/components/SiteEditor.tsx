@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Monitor, Smartphone, Check, Eye, EyeOff,
   Palette, Layout, Type, Image, Download, Code, Loader2,
+  Circle, Square, Triangle, Type as TypeIcon, Trash2, Undo, ZoomIn, ZoomOut,
 } from 'lucide-react';
+import * as fabric from 'fabric';
 import type { GeneratedSite } from '../types';
 import { useData } from '../context/DataContext';
 import { generateFullWebsiteHTML } from '../services/llm';
@@ -13,6 +15,250 @@ interface SiteEditorProps {
   site: GeneratedSite | null;
   onClose: () => void;
   onPublish: () => void;
+}
+
+// ── Image Creator Modal using Fabric.js ──
+
+function ImageCreatorModal({
+  open,
+  onClose,
+  onSave,
+  accentColor,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSave: (imageDataUrl: string) => void;
+  accentColor: string;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fabricRef = useRef<fabric.Canvas | null>(null);
+  const [activeTool, setActiveTool] = useState<'select' | 'rect' | 'circle' | 'triangle' | 'text'>('select');
+  const [zoom, setZoom] = useState(1);
+
+  // Cleanup fabric canvas on unmount
+  useEffect(() => {
+    return () => {
+      if (fabricRef.current) {
+        fabricRef.current.dispose();
+        fabricRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (open && canvasRef.current && !fabricRef.current) {
+      fabricRef.current = new fabric.Canvas(canvasRef.current, {
+        width: 600,
+        height: 400,
+        backgroundColor: '#ffffff',
+      });
+    } else if (!open && fabricRef.current) {
+      fabricRef.current.dispose();
+      fabricRef.current = null;
+    }
+  }, [open]);
+
+  const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!fabricRef.current || !canvasRef.current) return;
+    const canvas = fabricRef.current;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const pointer = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+
+    if (activeTool === 'rect') {
+      const rect = new fabric.Rect({
+        left: pointer.x,
+        top: pointer.y,
+        width: 120,
+        height: 80,
+        fill: accentColor + '40',
+        stroke: accentColor,
+        strokeWidth: 2,
+        rx: 8,
+        ry: 8,
+      });
+      canvas.add(rect);
+      canvas.setActiveObject(rect);
+      canvas.renderAll();
+    } else if (activeTool === 'circle') {
+      const circle = new fabric.Circle({
+        left: pointer.x,
+        top: pointer.y,
+        radius: 50,
+        fill: accentColor + '30',
+        stroke: accentColor,
+        strokeWidth: 2,
+      });
+      canvas.add(circle);
+      canvas.setActiveObject(circle);
+      canvas.renderAll();
+    } else if (activeTool === 'triangle') {
+      const triangle = new fabric.Triangle({
+        left: pointer.x,
+        top: pointer.y,
+        width: 100,
+        height: 100,
+        fill: accentColor + '30',
+        stroke: accentColor,
+        strokeWidth: 2,
+      });
+      canvas.add(triangle);
+      canvas.setActiveObject(triangle);
+      canvas.renderAll();
+    } else if (activeTool === 'text') {
+      const text = new fabric.IText('Click to edit', {
+        left: pointer.x,
+        top: pointer.y,
+        fontSize: 24,
+        fill: accentColor,
+        fontFamily: 'Inter, sans-serif',
+      });
+      canvas.add(text);
+      canvas.setActiveObject(text);
+      canvas.renderAll();
+    }
+  };
+
+  const handleDelete = () => {
+    if (!fabricRef.current) return;
+    const active = fabricRef.current.getActiveObject();
+    if (active) {
+      fabricRef.current.remove(active);
+      fabricRef.current.renderAll();
+    }
+  };
+
+  const handleUndo = () => {
+    if (!fabricRef.current) return;
+    const objects = fabricRef.current.getObjects();
+    if (objects.length > 0) {
+      fabricRef.current.remove(objects[objects.length - 1]);
+      fabricRef.current.renderAll();
+    }
+  };
+
+  const handleZoomIn = () => {
+    if (!fabricRef.current) return;
+    const newZoom = Math.min(zoom + 0.2, 3);
+    setZoom(newZoom);
+    fabricRef.current.setZoom(newZoom);
+    fabricRef.current.renderAll();
+  };
+
+  const handleZoomOut = () => {
+    if (!fabricRef.current) return;
+    const newZoom = Math.max(zoom - 0.2, 0.5);
+    setZoom(newZoom);
+    fabricRef.current.setZoom(newZoom);
+    fabricRef.current.renderAll();
+  };
+
+  const handleSaveImage = () => {
+    if (!fabricRef.current) return;
+    const dataUrl = fabricRef.current.toDataURL({
+      format: 'png',
+      quality: 1,
+      multiplier: 2,
+    });
+    onSave(dataUrl);
+    onClose();
+  };
+
+  const handleClear = () => {
+    if (!fabricRef.current) return;
+    fabricRef.current.clear();
+    fabricRef.current.backgroundColor = '#ffffff';
+    fabricRef.current.renderAll();
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-6" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-zinc-900 border border-zinc-700 rounded-2xl overflow-hidden w-full max-w-4xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-white">Image Creator</h3>
+          <div className="flex items-center gap-2">
+            <button onClick={handleClear} className="px-3 py-2 rounded-lg bg-zinc-800 text-zinc-400 hover:text-white transition-colors text-xs flex items-center gap-2">
+              <Trash2 size={14} /> Clear
+            </button>
+            <button onClick={onClose} className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-400 hover:text-white transition-colors">
+              Cancel
+            </button>
+            <button onClick={handleSaveImage} className="px-4 py-2 rounded-lg bg-white text-black font-medium hover:bg-zinc-200 transition-colors">
+              Save Image
+            </button>
+          </div>
+        </div>
+
+        {/* Toolbar */}
+        <div className="px-6 py-3 border-b border-zinc-800 flex items-center gap-4">
+          <div className="flex items-center gap-1 bg-zinc-800 rounded-lg p-1">
+            {[
+              { id: 'select', icon: Monitor, label: 'Select' },
+              { id: 'rect', icon: Square, label: 'Rectangle' },
+              { id: 'circle', icon: Circle, label: 'Circle' },
+              { id: 'triangle', icon: Triangle, label: 'Triangle' },
+              { id: 'text', icon: TypeIcon, label: 'Text' },
+            ].map((tool) => (
+              <button
+                key={tool.id}
+                onClick={() => setActiveTool(tool.id as any)}
+                className={`p-2 rounded-md transition-colors ${
+                  activeTool === tool.id
+                    ? 'bg-zinc-700 text-white'
+                    : 'text-zinc-500 hover:text-white'
+                }`}
+                title={tool.label}
+              >
+                <tool.icon size={18} />
+              </button>
+            ))}
+          </div>
+          <div className="h-6 w-px bg-zinc-700" />
+          <button onClick={handleUndo} className="p-2 rounded-lg text-zinc-500 hover:text-white transition-colors" title="Undo">
+            <Undo size={18} />
+          </button>
+          <button onClick={handleDelete} className="p-2 rounded-lg text-zinc-500 hover:text-red-400 transition-colors" title="Delete">
+            <Trash2 size={18} />
+          </button>
+          <div className="h-6 w-px bg-zinc-700" />
+          <button onClick={handleZoomOut} className="p-2 rounded-lg text-zinc-500 hover:text-white transition-colors" title="Zoom Out">
+            <ZoomOut size={18} />
+          </button>
+          <span className="text-xs text-zinc-500 font-mono">{Math.round(zoom * 100)}%</span>
+          <button onClick={handleZoomIn} className="p-2 rounded-lg text-zinc-500 hover:text-white transition-colors" title="Zoom In">
+            <ZoomIn size={18} />
+          </button>
+        </div>
+
+        {/* Canvas area */}
+        <div
+          className="p-6 bg-zinc-950 flex items-center justify-center overflow-auto"
+          onClick={handleCanvasClick}
+          style={{ cursor: activeTool === 'select' ? 'default' : 'crosshair' }}
+        >
+          <div className="relative" style={{ transform: `scale(${zoom})`, transformOrigin: 'center' }}>
+            <canvas ref={canvasRef} />
+          </div>
+        </div>
+
+        {/* Footer hint */}
+        <div className="px-6 py-3 border-t border-zinc-800 text-xs text-zinc-500">
+          Click on the canvas to add shapes. Drag to move, resize handles to scale, rotation handle to rotate.
+        </div>
+      </motion.div>
+    </div>
+  );
 }
 
 // ── Template style definitions ──
@@ -165,11 +411,13 @@ function EditableField({
 export default function SiteEditor({ open, site, onClose, onPublish }: SiteEditorProps) {
   const { addNotification, apiKeys } = useData();
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
-  const [activeTab, setActiveTab] = useState<'content' | 'theme' | 'sections'>('content');
+  const [activeTab, setActiveTab] = useState<'content' | 'theme' | 'sections' | 'gallery'>('content');
   const [copied, setCopied] = useState(false);
   const [generatingHtml, setGeneratingHtml] = useState(false);
   const [fullHtml, setFullHtml] = useState<string | null>(null);
   const [showCode, setShowCode] = useState(false);
+  const [showImageCreator, setShowImageCreator] = useState(false);
+  const [customImages, setCustomImages] = useState<string[]>([]);
 
   // Editable site state
   const [editableSite, setEditableSite] = useState<GeneratedSite | null>(null);
@@ -236,6 +484,11 @@ export default function SiteEditor({ open, site, onClose, onPublish }: SiteEdito
 
   const accentStyle: React.CSSProperties = {
     color: template.accent,
+  };
+
+  const handleSaveCustomImage = (imageDataUrl: string) => {
+    setCustomImages((prev) => [...prev, imageDataUrl]);
+    addNotification('Image created and saved! 📸');
   };
 
   // ── Generate & Download Full Website HTML ──
@@ -397,6 +650,24 @@ export default function SiteEditor({ open, site, onClose, onPublish }: SiteEdito
             style={{ fontWeight: template.headingWeight, marginBottom: 40, ...accentStyle }}
           />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+            {/* Custom images from fabric.js */}
+            {customImages.map((img, idx) => (
+              <div
+                key={`custom-${idx}`}
+                style={{
+                  ...cardStyle,
+                  aspectRatio: '4/3',
+                  overflow: 'hidden',
+                  padding: 0,
+                }}
+              >
+                <img
+                  src={img}
+                  alt={`Custom image ${idx + 1}`}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              </div>
+            ))}
             {/* Pattern 1: Concentric radiating circles */}
             <div
               className="gallery-tile-1"
@@ -652,6 +923,7 @@ export default function SiteEditor({ open, site, onClose, onPublish }: SiteEdito
                   {[
                     { id: 'content', label: 'Content' },
                     { id: 'sections', label: 'Sections' },
+                    { id: 'gallery', label: 'Gallery' },
                     { id: 'theme', label: 'Theme' },
                   ].map((tab) => (
                     <button
@@ -668,6 +940,23 @@ export default function SiteEditor({ open, site, onClose, onPublish }: SiteEdito
                   ))}
                 </div>
 
+                {/* ── Image Creator Button ── */}
+                {activeTab === 'gallery' && (
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => setShowImageCreator(true)}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors bg-zinc-900 hover:bg-zinc-800 border border-dashed border-zinc-700"
+                    >
+                      <Image size={15} className="text-zinc-400" />
+                      <span className="text-xs text-zinc-400">Create Custom Image</span>
+                    </button>
+                    {customImages.length > 0 && (
+                      <div className="text-xs text-zinc-500 px-2">
+                        {customImages.length} custom image(s) created
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                   {/* ── Content Tab ── */}
                   {activeTab === 'content' && (
@@ -746,6 +1035,29 @@ export default function SiteEditor({ open, site, onClose, onPublish }: SiteEdito
                           </div>
                         </>
                       )}
+                    </div>
+                  )}
+
+                  {/* ── Gallery Tab ── */}
+                  {activeTab === 'gallery' && (
+                    <div className="space-y-2">
+                      {customImages.map((img, idx) => (
+                        <div key={idx} className="relative rounded-xl overflow-hidden border border-zinc-800">
+                          <img src={img} alt={`Custom ${idx}`} className="w-full h-24 object-cover" />
+                          <button
+                            onClick={() => setCustomImages((prev) => prev.filter((_, i) => i !== idx))}
+                            className="absolute top-1 right-1 p-1 bg-red-500/80 rounded-full text-white hover:bg-red-500"
+                          >
+                            <Trash2 size={10} />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => setShowImageCreator(true)}
+                        className="w-full py-3 rounded-xl border-2 border-dashed border-zinc-800 text-zinc-500 text-xs hover:border-zinc-600 hover:text-zinc-400 transition-colors"
+                      >
+                        + Create New Image
+                      </button>
                     </div>
                   )}
 
@@ -836,6 +1148,14 @@ export default function SiteEditor({ open, site, onClose, onPublish }: SiteEdito
               </div>
             </div>
           </motion.div>
+
+          {/* Image Creator Modal */}
+          <ImageCreatorModal
+            open={showImageCreator}
+            onClose={() => setShowImageCreator(false)}
+            onSave={handleSaveCustomImage}
+            accentColor={currentSite.accentColor}
+          />
         </div>
       )}
     </AnimatePresence>
