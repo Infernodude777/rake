@@ -1,19 +1,5 @@
 export type TestResult = { success: boolean; message: string };
 
-export async function testYelpKey(apiKey: string): Promise<TestResult> {
-  try {
-    const res = await fetch(
-      'https://api.yelp.com/v3/businesses/search?term=test&location=test&limit=1',
-      { headers: { Authorization: `Bearer ${apiKey}` } }
-    );
-    if (res.ok) return { success: true, message: 'Connected! Yelp API key is valid.' };
-    if (res.status === 401) return { success: false, message: 'Invalid API key. Check your Yelp API key.' };
-    return { success: false, message: `Yelp API error (${res.status}).` };
-  } catch (err) {
-    return { success: false, message: `Connection failed: ${err instanceof Error ? err.message : 'Unknown error'}` };
-  }
-}
-
 export async function testGoogleKey(apiKey: string): Promise<TestResult> {
   try {
     const res = await fetch(
@@ -47,6 +33,39 @@ export async function testFirecrawlKey(apiKey: string): Promise<TestResult> {
       return { success: false, message: 'Invalid API key or insufficient permissions.' };
     }
     return { success: false, message: `Firecrawl API error (${res.status}).` };
+  } catch (err) {
+    return { success: false, message: `Connection failed: ${err instanceof Error ? err.message : 'Unknown error'}` };
+  }
+}
+
+export async function testFoursquareKey(apiKey: string): Promise<TestResult> {
+  try {
+    const res = await fetch('https://api.foursquare.com/v3/places/search?query=test&limit=1&near=US', {
+      headers: {
+        'Authorization': apiKey,
+        'Accept': 'application/json',
+      },
+    });
+    if (res.ok) return { success: true, message: 'Connected! Foursquare API key is valid.' };
+    if (res.status === 401 || res.status === 403) {
+      return { success: false, message: 'Invalid API key or insufficient permissions.' };
+    }
+    return { success: false, message: `Foursquare API error (${res.status}).` };
+  } catch (err) {
+    return { success: false, message: `Connection failed: ${err instanceof Error ? err.message : 'Unknown error'}` };
+  }
+}
+
+export async function testHereKey(apiKey: string): Promise<TestResult> {
+  try {
+    const res = await fetch(
+      `https://discover.search.hereapi.com/v1/discover?q=test&limit=1&apiKey=${apiKey}`
+    );
+    if (res.ok) return { success: true, message: 'Connected! HERE API key is valid.' };
+    if (res.status === 401) {
+      return { success: false, message: 'Invalid API key.' };
+    }
+    return { success: false, message: `HERE API error (${res.status}).` };
   } catch (err) {
     return { success: false, message: `Connection failed: ${err instanceof Error ? err.message : 'Unknown error'}` };
   }

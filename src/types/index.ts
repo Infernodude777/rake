@@ -82,7 +82,8 @@ export interface ApiKeys {
   llmApiKey: string;
   firecrawlApiKey: string;
   googleMapsApiKey: string;
-  yelpApiKey: string;
+  foursquareApiKey: string;
+  hereApiKey: string;
 }
 
 export const DEFAULT_API_KEYS: ApiKeys = {
@@ -91,7 +92,8 @@ export const DEFAULT_API_KEYS: ApiKeys = {
   llmApiKey: '',
   firecrawlApiKey: '',
   googleMapsApiKey: '',
-  yelpApiKey: '',
+  foursquareApiKey: '',
+  hereApiKey: '',
 };
 
 // === Dashboard Types ===
@@ -133,8 +135,9 @@ export interface RateLimitConfig {
 export type RateLimitPreset = Record<string, RateLimitConfig>;
 
 export const DEFAULT_RATE_LIMITS: RateLimitPreset = {
-  yelp: { rpm: 5, rpd: 290 },
   google: { rpm: 10, rpd: 100000 },
+  foursquare: { rpm: 10, rpd: 5000 },
+  here: { rpm: 20, rpd: 100000 },
   firecrawl: { rpm: 3, rpd: 490 },
   llm: { rpm: 30, rpd: 5000 },
 };

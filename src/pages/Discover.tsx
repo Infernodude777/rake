@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { Search } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { searchBusinesses as firecrawlSearch, rateLimiter as firecrawlLimiter } from '../services/firecrawl';
-import { searchBusinesses as yelpSearch, rateLimiter as yelpLimiter } from '../services/yelp';
-import { searchPlaces, rateLimiter as googleLimiter } from '../services/google';
+import { searchPlaces as googleSearch, rateLimiter as googleLimiter } from '../services/google';
+import { searchPlaces as foursquareSearch, rateLimiter as foursquareLimiter } from '../services/foursquare';
+import { searchPlaces as hereSearch, rateLimiter as hereLimiter } from '../services/here';
 import { scoreOpportunity, rateLimiter as llmLimiter } from '../services/llm';
 import { RateLimitError } from '../utils/rateLimiter';
 import BusinessCard from '../components/BusinessCard';
@@ -23,8 +24,9 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
   // Sync rate limiter configs from user settings
   useEffect(() => {
     if (settings.rateLimits) {
-      yelpLimiter.updateConfig(settings.rateLimits.yelp);
       googleLimiter.updateConfig(settings.rateLimits.google);
+      foursquareLimiter.updateConfig(settings.rateLimits.foursquare);
+      hereLimiter.updateConfig(settings.rateLimits.here);
       firecrawlLimiter.updateConfig(settings.rateLimits.firecrawl);
       llmLimiter.updateConfig(settings.rateLimits.llm);
     }
@@ -44,43 +46,10 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
       const term = parts[0] || queryLower;
       const location = parts[1] || '';
 
-      // Try Yelp
-      if (apiKeys.yelpApiKey) {
-        try {
-          const yelpResults = await yelpSearch(apiKeys.yelpApiKey, term, location || 'Miami');
-          yelpResults.forEach((b) => {
-            results.push({
-              id: Date.now() + results.length,
-              name: b.name,
-              category: b.categories[0] || term,
-              location: b.location,
-              rating: b.rating,
-              reviews: b.reviewCount,
-              website: b.url,
-              opportunityScore: 0,
-              seoScore: 0,
-              mobileScore: 0,
-              urgency: 0,
-              closeProbability: 0,
-              issues: [],
-              tech: [],
-              source: 'Yelp',
-              createdAt: Date.now(),
-            });
-          });
-        } catch (e: any) {
-          if (e instanceof RateLimitError) {
-            addNotification(`⏳ Yelp rate limited — resets in ${Math.ceil(e.retryAfterMs / 60000)} min`);
-          } else {
-            console.warn('Yelp search failed:', e);
-          }
-        }
-      }
-
       // Try Google Places
       if (apiKeys.googleMapsApiKey) {
         try {
-          const places = await searchPlaces(apiKeys.googleMapsApiKey, query);
+          const places = await googleSearch(apiKeys.googleMapsApiKey, query);
           places.forEach((p) => {
             if (!results.some((r) => r.name === p.name)) {
               results.push({
@@ -109,6 +78,76 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
             addNotification(`⏳ Google Places rate limited — resets in ${Math.ceil(e.retryAfterMs / 60000)} min`);
           } else {
             console.warn('Google Places search failed:', e);
+          }
+        }
+      }
+
+      // Try Foursquare
+      if (apiKeys.foursquareApiKey) {
+        try {
+          const places = await foursquareSearch(apiKeys.foursquareApiKey, query);
+          places.forEach((p) => {
+            if (!results.some((r) => r.name === p.name)) {
+              results.push({
+                id: Date.now() + results.length + 3000,
+                name: p.name,
+                category: p.categories[0] || term,
+                location: p.formattedAddress,
+                rating: p.rating,
+                reviews: 0,
+                website: p.website || '',
+                opportunityScore: 0,
+                seoScore: 0,
+                mobileScore: 0,
+                urgency: 0,
+                closeProbability: 0,
+                issues: [],
+                tech: [],
+                source: 'Foursquare',
+                createdAt: Date.now(),
+              });
+            }
+          });
+        } catch (e: any) {
+          if (e instanceof RateLimitError) {
+            addNotification(`⏳ Foursquare rate limited — resets in ${Math.ceil(e.retryAfterMs / 60000)} min`);
+          } else {
+            console.warn('Foursquare search failed:', e);
+          }
+        }
+      }
+
+      // Try HERE
+      if (apiKeys.hereApiKey) {
+        try {
+          const places = await hereSearch(apiKeys.hereApiKey, query);
+          places.forEach((p) => {
+            if (!results.some((r) => r.name === p.name)) {
+              results.push({
+                id: Date.now() + results.length + 4000,
+                name: p.name,
+                category: p.categories[0] || term,
+                location: p.formattedAddress,
+                rating: 0,
+                reviews: 0,
+                website: p.website || '',
+                opportunityScore: 0,
+                seoScore: 0,
+                mobileScore: 0,
+                urgency: 0,
+                closeProbability: 0,
+                issues: [],
+                tech: [],
+                source: 'HERE',
+                createdAt: Date.now(),
+              });
+            }
+          });
+        } catch (e: any) {
+          if (e instanceof RateLimitError) {
+            addNotification(`⏳ HERE rate limited — resets in ${Math.ceil(e.retryAfterMs / 60000)} min`);
+          } else {
+            console.warn('HERE search failed:', e);
           }
         }
       }
@@ -252,7 +291,7 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
     onNavigate('websites');
   };
 
-  const hasAnyKey = apiKeys.yelpApiKey || apiKeys.googleMapsApiKey || apiKeys.firecrawlApiKey || apiKeys.llmApiKey;
+  const hasAnyKey = apiKeys.googleMapsApiKey || apiKeys.foursquareApiKey || apiKeys.hereApiKey || apiKeys.firecrawlApiKey || apiKeys.llmApiKey;
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
