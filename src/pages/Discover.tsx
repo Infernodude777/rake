@@ -22,6 +22,14 @@ const SERVICE_META = [
   { id: 'llm', name: 'AI Enrichment', icon: Zap },
 ] as const;
 
+function escapeCSV(val: string | number): string {
+  const s = String(val);
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
 function createServiceStatuses(): ServiceStatus[] {
   return SERVICE_META.map((s) => ({
     id: s.id,
@@ -75,56 +83,103 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
       // ── Google Places Search ──
       if (apiKeys.googleMapsApiKey) {
         updateStatus('google', { status: 'loading', message: 'Searching...' });
-        try {
-          let found;
 
+        // Helpers to normalize and merge results
+        const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const seen = new Set<string>();
+
+        const addResult = (b: any) => {
+          if (!b?.name) return;
+          const key = normalize(b.name);
+          if (seen.has(key)) {
+            // Merge: prefer non-empty values from either source
+            const cur = results[results.findIndex((r) => normalize(r.name) === key)];
+            if (!cur) return;
+            if (!cur.website && b.website) cur.website = b.website;
+            if (!cur.phone && b.phone) cur.phone = b.phone;
+            if (!cur.googlePlaceId && (b.placeId || b.place_id)) cur.googlePlaceId = b.placeId || b.place_id;
+            if (b.rating > cur.rating) cur.rating = b.rating;
+            if ((b.userRatingsTotal || 0) > cur.reviews) cur.reviews = b.userRatingsTotal || 0;
+            return;
+          }
+          seen.add(key);
+          results.push({
+            id: Date.now() + results.length + 1000,
+            name: b.name,
+            category: (b.types && b.types[0]) || term,
+            location: b.formattedAddress || b.address || location || term,
+            rating: b.rating || 0,
+            reviews: b.userRatingsTotal || 0,
+            website: b.website || '',
+            phone: b.phone || undefined,
+            opportunityScore: 0,
+            seoScore: 0,
+            mobileScore: 0,
+            urgency: 0,
+            closeProbability: 0,
+            issues: [],
+            tech: [],
+            source: 'Google Maps',
+            googlePlaceId: b.placeId || b.place_id,
+            createdAt: Date.now(),
+          });
+        };
+
+        try {
           if (location) {
-            // Query has "in <location>" → try geocoding + nearby search first
-            updateStatus('google', { message: `Geocoding "${location}"...` });
-            try {
-              found = await findBusinesses({
+            // Run both nearby search (geocoding) and text search in parallel
+            updateStatus('google', { message: 'Running nearby + text search...' });
+            const [nearbyResult, textResult] = await Promise.allSettled([
+              findBusinesses({
                 keyword: term,
                 location,
                 radiusMeters: 5000,
                 maxResults: 20,
                 apiKey: apiKeys.googleMapsApiKey,
+              }).then((r) => ({ source: 'nearby' as const, data: r })),
+              searchPlaces(apiKeys.googleMapsApiKey, queryLower).then((r) => ({ source: 'text' as const, data: r })),
+            ]);
+
+            let nearbyCount = 0;
+            let textCount = 0;
+
+            if (nearbyResult.status === 'fulfilled') {
+              nearbyResult.value.data.forEach(addResult);
+              nearbyCount = nearbyResult.value.data.length;
+            } else {
+              console.warn('Nearby search failed:', nearbyResult.reason);
+            }
+
+            if (textResult.status === 'fulfilled') {
+              textResult.value.data.forEach(addResult);
+              textCount = textResult.value.data.length;
+            } else {
+              console.warn('Text search failed:', textResult.reason);
+            }
+
+            const combined = results.length;
+            if (nearbyCount > 0 && textCount > 0) {
+              updateStatus('google', {
+                status: 'success',
+                message: `Nearby: ${nearbyCount}, Text: ${textCount} → ${combined} unique`,
+                resultCount: combined,
               });
-            } catch {
-              // Geocoding failed (e.g., Geocoding API not enabled) — fall back to text search
-              updateStatus('google', { message: 'Geocoding unavailable, using text search...' });
-              found = await searchPlaces(apiKeys.googleMapsApiKey, queryLower);
+            } else if (nearbyCount > 0) {
+              updateStatus('google', { status: 'success', resultCount: nearbyCount });
+            } else if (textCount > 0) {
+              updateStatus('google', { status: 'success', resultCount: textCount });
+            } else {
+              // Both failed — report the first error
+              const err = nearbyResult.status === 'rejected' ? nearbyResult.reason : textResult.status === 'rejected' ? textResult.reason : null;
+              throw err || new Error('Both searches returned no results');
             }
           } else {
             // No location in query — use text search directly
             updateStatus('google', { message: 'Searching Google Places...' });
-            found = await searchPlaces(apiKeys.googleMapsApiKey, queryLower);
+            const found = await searchPlaces(apiKeys.googleMapsApiKey, queryLower);
+            found.forEach(addResult);
+            updateStatus('google', { status: 'success', resultCount: found.length });
           }
-
-          found.forEach((b: any) => {
-            if (!results.some((r) => r.name === b.name)) {
-              results.push({
-                id: Date.now() + results.length + 1000,
-                name: b.name,
-                category: (b.types && b.types[0]) || term,
-                location: b.formattedAddress || b.address || location || term,
-                rating: b.rating || 0,
-                reviews: b.userRatingsTotal || 0,
-                website: b.website || '',
-                phone: b.phone || undefined,
-                opportunityScore: 0,
-                seoScore: 0,
-                mobileScore: 0,
-                urgency: 0,
-                closeProbability: 0,
-                issues: [],
-                tech: [],
-                source: 'Google Maps',
-                googlePlaceId: b.placeId || b.place_id,
-                createdAt: Date.now(),
-              });
-            }
-          });
-          updateStatus('google', { status: 'success', resultCount: found.length });
         } catch (e: any) {
           if (e instanceof RateLimitError) {
             updateStatus('google', { status: 'rate-limited', message: `Resets in ${Math.ceil(e.retryAfterMs / 60000)} min` });
@@ -254,6 +309,44 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
     onNavigate('websites');
   };
 
+  const exportCSV = useCallback(() => {
+    if (businesses.length === 0) return;
+
+    const headers = [
+      'Name', 'Category', 'Location', 'Rating', 'Reviews',
+      'Website', 'Phone', 'Source', 'Opp. Score', 'SEO Score',
+      'Mobile Score', 'Urgency', 'Close %', 'Issues', 'Tech Stack',
+    ];
+
+    const rows = businesses.map((b) => [
+      escapeCSV(b.name),
+      escapeCSV(b.category),
+      escapeCSV(b.location),
+      b.rating,
+      b.reviews,
+      b.website,
+      b.phone || '',
+      b.source || '',
+      b.opportunityScore,
+      b.seoScore,
+      b.mobileScore,
+      b.urgency,
+      b.closeProbability,
+      escapeCSV(b.issues.join('; ')),
+      escapeCSV(b.tech.join('; ')),
+    ]);
+
+    const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rake-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addNotification(`Exported ${businesses.length} businesses to CSV`);
+  }, [businesses, addNotification]);
+
   const hasAnyKey = apiKeys.googleMapsApiKey || apiKeys.llmApiKey;
 
   return (
@@ -370,9 +463,29 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
         </div>
       )}
 
+      {/* Results count + export button */}
+      {businesses.length > 0 && (
+        <div className="mt-8 flex items-center justify-between">
+          <div className="text-sm text-zinc-500">
+            {businesses.length} business{businesses.length !== 1 ? 'es' : ''} discovered
+          </div>
+          <button
+            onClick={exportCSV}
+            className="px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-zinc-400 hover:text-white hover:border-zinc-600 transition-all flex items-center gap-2"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            Export CSV
+          </button>
+        </div>
+      )}
+
       {/* Results list wrapped in error boundary */}
       {businesses.length > 0 && (
-        <div className="mt-8 space-y-4">
+        <div className="mt-4 space-y-4">
           <ErrorBoundary>
             {businesses.map((biz) => (
               <BusinessCard

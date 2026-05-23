@@ -66,10 +66,11 @@ const KEY_FIELDS: KeyField[] = [
     steps: [
       'Go to console.cloud.google.com and create a project',
       'Go to "APIs & Services" → "Library"',
-      'Search for "Places API" and click "Enable"',
+      'Search for "Places API" → click "Enable"',
+      'Still in "Library", search for "Geocoding API" → click "Enable" (required for location-based searches)',
       'Go to "Credentials" → "Create Credentials" → "API Key"',
-      'Optional: Restrict the key to Places API + Geocoding API (recommended)',
-      'Paste it below — free tier gives $200/mo credit (~66k searches)',
+      'Click "Restrict Key" → under "API restrictions", select both "Places API" and "Geocoding API"',
+      'Paste the key below — free tier gives $200/mo credit (~66k searches)',
     ],
   },
 ];
