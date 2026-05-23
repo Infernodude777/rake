@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, MapPin, Zap, CheckCircle2, XCircle, Clock, Loader2, Image as ImageIcon } from 'lucide-react';
+import { Search, MapPin, Zap, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { findBusinesses, searchPlaces, rateLimiter as googleLimiter } from '../services/google';
 import { scoreOpportunity, generateWebsiteContent, rateLimiter as llmLimiter } from '../services/llm';
-import { generateWebsiteImages, base64ToDataUrl, rateLimiter as imageLimiter } from '../services/imageGen';
 import { RateLimitError } from '../utils/rateLimiter';
 import BusinessCard from '../components/BusinessCard';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -21,7 +20,7 @@ interface ServiceStatus {
 const SERVICE_META = [
   { id: 'google', name: 'Google Maps', icon: MapPin },
   { id: 'llm', name: 'AI Enrichment', icon: Zap },
-  { id: 'imagen', name: 'AI Images (Nano Banana 2)', icon: ImageIcon },
+
 ] as const;
 
 function formatTimeAgo(timestamp: number): string {
@@ -78,7 +77,6 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
     if (settings.rateLimits) {
       googleLimiter.updateConfig(settings.rateLimits.google);
       llmLimiter.updateConfig(settings.rateLimits.llm);
-      imageLimiter.updateConfig(settings.rateLimits.gemini);
     }
   }, [settings.rateLimits]);
 
@@ -321,33 +319,6 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
       }
     }
 
-    // Generate AI images using Nano Banana 2 (Gemini Flash Image)
-    let heroImageUrl: string | undefined;
-    let galleryImageUrls: string[] | undefined;
-    let logoPrompt: string | undefined;
-    if (apiKeys.geminiApiKey) {
-      try {
-        const images = await generateWebsiteImages(apiKeys.geminiApiKey, {
-          name: biz.name,
-          category: biz.category,
-          location: biz.location,
-          variant,
-          primaryColor: content?.primaryColor,
-        });
-        if (images.heroImage) {
-          heroImageUrl = base64ToDataUrl(images.heroImage.base64, images.heroImage.mimeType);
-        }
-        if (images.galleryImages.length > 0) {
-          galleryImageUrls = images.galleryImages.map((img) =>
-            base64ToDataUrl(img.base64, img.mimeType)
-          );
-        }
-        logoPrompt = images.logoPrompt;
-      } catch (e) {
-        console.warn('Image generation failed (non-critical):', e);
-      }
-    }
-
     const site: GeneratedSite = {
       id: time,
       name: `${biz.name} • ${biz.category}`,
@@ -370,9 +341,6 @@ export default function Discover({ onNavigate, onOpenSiteEditor }: DiscoverProps
       secondaryColor: content?.secondaryColor || '#64748b',
       accentColor: content?.accentColor || '#7c3aed',
       visibleSections: content?.visibleSections || ['about', 'services', 'gallery', 'contact'],
-      heroImageUrl,
-      galleryImageUrls,
-      logoPrompt,
       metaDescription: content?.metaDescription,
       metaKeywords: content?.metaKeywords,
     };

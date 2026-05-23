@@ -262,8 +262,6 @@ export default function SiteEditor({ open, site, onClose, onPublish }: SiteEdito
         secondaryColor: currentSite.secondaryColor,
         accentColor: currentSite.accentColor,
         visibleSections: currentSite.visibleSections,
-        heroImageUrl: currentSite.heroImageUrl,
-        galleryImageUrls: currentSite.galleryImageUrls,
         metaDescription: currentSite.metaDescription || '',
         metaKeywords: currentSite.metaKeywords || '',
         variant: currentSite.variant,
@@ -321,15 +319,7 @@ export default function SiteEditor({ open, site, onClose, onPublish }: SiteEdito
     >
       {/* ── Hero Section ── */}
       <section style={{ ...heroStyle, padding: '80px 40px', textAlign: 'center', position: 'relative', overflow: 'hidden', minHeight: 400 }}>
-        {currentSite.heroImageUrl && (
-          <div style={{
-            position: 'absolute', inset: 0,
-            backgroundImage: `url(${currentSite.heroImageUrl})`,
-            backgroundSize: 'cover', backgroundPosition: 'center',
-            opacity: 0.35,
-          }} />
-        )}
-        {template.heroPattern && !currentSite.heroImageUrl && (
+        {template.heroPattern && (
           <div style={{ position: 'absolute', inset: 0, backgroundImage: template.heroPattern, opacity: 0.5 }} />
         )}
         <div style={{ position: 'relative', zIndex: 1 }}>
@@ -407,12 +397,7 @@ export default function SiteEditor({ open, site, onClose, onPublish }: SiteEdito
             style={{ fontWeight: template.headingWeight, marginBottom: 40, ...accentStyle }}
           />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-            {(currentSite.galleryImageUrls && currentSite.galleryImageUrls.length > 0
-              ? currentSite.galleryImageUrls
-              : [1, 2, 3, 4]
-            ).map((item, i) => {
-              const isImageUrl = typeof item === 'string' && item.startsWith('data:');
-              return (
+            {[1, 2, 3, 4].map((i) => (
                 <div
                   key={i}
                   style={{
@@ -422,18 +407,14 @@ export default function SiteEditor({ open, site, onClose, onPublish }: SiteEdito
                     alignItems: 'center',
                     justifyContent: 'center',
                     fontSize: 12,
-                    opacity: isImageUrl ? 1 : 0.5,
+                    opacity: 0.5,
                     color: template.accent,
                     overflow: 'hidden',
-                    backgroundImage: isImageUrl ? `url(${item})` : undefined,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
                   }}
                 >
-                  {!isImageUrl && <Image size={24} />}
+                  <Image size={24} />
                 </div>
-              );
-            })}
+              ))}
           </div>
         </section>
       )}

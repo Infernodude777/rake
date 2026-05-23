@@ -414,8 +414,6 @@ export interface WebsiteHTMLOptions {
   secondaryColor: string;
   accentColor: string;
   visibleSections: string[];
-  heroImageUrl?: string;
-  galleryImageUrls?: string[];
   metaDescription: string;
   metaKeywords: string;
   variant: string;
@@ -476,8 +474,8 @@ CRITICAL REQUIREMENTS:
 5. Implement FULL responsive design with mobile hamburger menu
 6. Add subtle scroll-reveal animations using Intersection Observer
 7. Include a functional contact form (no backend needed — show success toast on submit)
-8. ${options.galleryImageUrls && options.galleryImageUrls.length > 0 ? `Use these gallery image URLs where available: ${options.galleryImageUrls.slice(0, 4).join(', ')}` : 'Create CSS-only decorative gallery placeholders with abstract geometric patterns'}
-9. ${options.heroImageUrl ? `Use this hero image: ${options.heroImageUrl}` : 'Create a CSS gradient/animation hero background'}
+8. Create a CSS gradient/animation hero background with geometric patterns
+9. Create CSS-only decorative gallery placeholders with abstract geometric patterns
 10. Include a footer with copyright, business name, and back-to-top button
 11. Add JSON-LD structured data for LocalBusiness schema
 12. All images must have proper alt text for accessibility
